@@ -72,22 +72,22 @@ def train(data, weights, hidden_bias, visible_bias, num_epochs, batch_size, lear
 def sample(weights, hidden_bias, visible_bias, num_samples, num_visible, k):
     samples = np.zeros((num_samples, num_visible))
     for i in range(num_samples):
-        for _ in range(k):
-            sample = np.random.randint(low=0, high=2, size=num_visible)
-            sample = sample.reshape(1, -1)
-            h = sigmoid(dot_product(sample, weights) + hidden_bias)
+        random_input = np.random.randint(low=0, high=2, size=(1,num_visible))
+        if i % 100 == 0 and i != 0:
+                print(f"Sampled the first {i} samples")
+        for j in range(10e3):
+            # random_input = random_input.reshape(1, -1)
+            h = sigmoid(dot_product(random_input, weights) + hidden_bias)
             h = boolean_to_int(h > np.random.random(h.shape))
             v = sigmoid(dot_product(h, weights.T) + visible_bias)
-            sample = boolean_to_int(v > np.random.random(v.shape))
+            sample_k = boolean_to_int(v > np.random.random(v.shape))
         # h = _sigmoid(dot_product(sample, weights) + hidden_bias)
         # h = (h > np.random.random(h.shape)).astype(int)
         # v = _sigmoid(dot_product(h, weights.T) + visible_bias)
         # sample = (v > np.random.random(v.shape)).astype(int)
-        samples[i] = sample
+        samples[i] = sample_k
 
     return samples
-
-# from numba import prange
 
 
 

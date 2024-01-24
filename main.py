@@ -5,6 +5,7 @@ import pandas as pd
 from rbm import *
 from utils import *
 import time
+from scipy import stats
 np.random.seed(666)
 
 
@@ -35,44 +36,58 @@ start = time.time()
 #     print(f"Done. Number of rows dropped: {num_rows - num_rows_dropped}\n")
 
 # Create a synthetic normal dataset
-data = np.random.normal(0, 1, (1000, 1))
+normal_1 = np.random.normal(-2, 1, (5000))
+normal_2 = np.random.normal(2, 2, (5000))
+data = np.concatenate((normal_1, normal_2)).reshape(-1, 1)
 data = pd.DataFrame(data)
 
 # Convert the data to binary
 data_binary, (X_min, X_max) = from_real_to_binary(data)
 
 # Define the RBM
-num_visible = data_binary.shape[1]  # Number of binary features in your data
-num_hidden = 32   # Number of hidden units
-# rbm = RBM(num_visible, num_hidden)
+num_visible = data_binary.shape[1]
+num_hidden = 12
 weights, hidden_bias, visible_bias = initialize_rbm(num_visible, num_hidden)
 
 # Train the RBM
-# reconstruction_error = rbm.train(data_binary, batch_size=10, num_epochs=100, learning_rate=0.1, k=1, monitoring=True)
 reconstruction_error, weights, hidden_bias, visible_bias = train(
-    data_binary, weights, hidden_bias, visible_bias, num_epochs=10000, batch_size=10, learning_rate=0.1, k=10, monitoring=True)
+    data_binary, weights, hidden_bias, visible_bias, num_epochs=100, batch_size=10, learning_rate=0.1, k=1, monitoring=True)
 
 # Sample from the RBM
-num_samples = 1000
-# samples = rbm.sample(num_samples, k=10)
+print("Sampling from the RBM...")
+num_samples = 10000
 samples = sample(weights, hidden_bias, visible_bias, num_samples, num_visible, k=10)
+print(f"Done\n")
+# Convert to real values
+print("Converting the samples from binary to real values...")
+samples = from_binary_to_real(samples, X_min, X_max).to_numpy().reshape(-1)
+print(f"Done\n")
 
-# Convert the samples back to real values
-samples = from_binary_to_real(samples, X_min, X_max)
+data = data.to_numpy().reshape(-1)
 
 total_time = time.time() - start
 print(f"Total time: {total_time} seconds")
 
 # Plot the samples and the recontructed error
-fig, ax = plt.subplots(1, 2, figsize=(10, 5), tight_layout=True)
+fig, ax = plt.subplots(1, 3, figsize=(13, 5), tight_layout=True)
 ax[0].plot(reconstruction_error)
 ax[0].set_xlabel("Epoch")
 ax[0].set_ylabel("Reconstruction error")
+ax[0].set_title("Reconstruction error")
 ax[1].hist(samples, bins=50)
 ax[1].hist(data, bins=50, alpha=0.5)
 ax[1].set_xlabel("Value")
 ax[1].set_ylabel("Frequency")
+ax[1].set_title("Histogram of RBM samples and original data")
+# Generate QQ plot data
+quantiles1, quantiles2 = stats.probplot(samples, dist="norm")[0][0], stats.probplot(data, dist="norm")[0][0]
+(osm, osr), (slope, intercept, r) = stats.probplot(samples, dist="norm", sparams=(data.mean(), data.std()))
+# Create QQ plot
+ax[2].scatter(quantiles1, quantiles2)
+ax[2].plot(osm, slope * osm + intercept, color='r')
+ax[2].set_title('QQ-plot: Generated RBM vs. Data')
 plt.show()
+
 
 
 

@@ -30,7 +30,10 @@ def from_binary_to_real(X_binary, X_min, X_max):
     Converts a set of binary features back into real-valued data.
     """
     N_samples = len(X_binary)
-    N_variables = len(X_min)
+    if isinstance(X_min, float):
+        N_variables = 1
+    else:
+        N_variables = len(X_min)
     X_real = [[0] * N_variables for _ in range(N_samples)]
 
     for n in range(N_variables):
