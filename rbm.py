@@ -1,6 +1,7 @@
 import numpy as np
 import numba as nb
 from utils import *
+import multiprocessing
 np.random.seed(666)
 
 @nb.njit
@@ -69,24 +70,50 @@ def train(data, weights, hidden_bias, visible_bias, num_epochs, batch_size, lear
     return reconstructed_error, weights, hidden_bias, visible_bias
 
 @nb.njit
-def sample(weights, hidden_bias, visible_bias, num_samples, num_visible, k):
+def sample(weights, hidden_bias, visible_bias, num_samples, num_visible, K):
     samples = np.zeros((num_samples, num_visible))
     for i in range(num_samples):
         random_input = np.random.randint(low=0, high=2, size=(1,num_visible))
         if i % 100 == 0 and i != 0:
                 print(f"Sampled the first {i} samples")
-        for j in range(10e3):
-            # random_input = random_input.reshape(1, -1)
+        for j in range(K):
             h = sigmoid(dot_product(random_input, weights) + hidden_bias)
             h = boolean_to_int(h > np.random.random(h.shape))
             v = sigmoid(dot_product(h, weights.T) + visible_bias)
             sample_k = boolean_to_int(v > np.random.random(v.shape))
-        # h = _sigmoid(dot_product(sample, weights) + hidden_bias)
-        # h = (h > np.random.random(h.shape)).astype(int)
-        # v = _sigmoid(dot_product(h, weights.T) + visible_bias)
-        # sample = (v > np.random.random(v.shape)).astype(int)
+            random_input = sample_k
         samples[i] = sample_k
 
+    return samples
+
+@nb.njit
+def sample_worker(start, end, weights, hidden_bias, visible_bias, num_visible, K):
+    # This function will handle the sampling for a subset of samples
+    samples = np.zeros((end - start, num_visible))
+    for i in range(end-start):
+        random_input = np.random.randint(low=0, high=2, size=(1,num_visible))
+        for j in range(K):
+            h = sigmoid(dot_product(random_input, weights) + hidden_bias)
+            h = boolean_to_int(h > np.random.random(h.shape))
+            v = sigmoid(dot_product(h, weights.T) + visible_bias)
+            sample_k = boolean_to_int(v > np.random.random(v.shape))
+            random_input = sample_k
+        samples[i] = sample_k
+    return samples
+
+def parallel_sample(weights, hidden_bias, visible_bias, num_samples, num_visible, K):
+    # Split num_samples into 8 ranges
+    ranges = np.array_split(range(num_samples), 8)
+
+    # Prepare arguments for each process
+    args = [(r[0], r[-1]+1, weights, hidden_bias, visible_bias, num_visible, K) for r in ranges]
+
+    # Create a pool of 8 processes
+    with multiprocessing.Pool(8) as pool:
+        results = pool.starmap(sample_worker, args)
+
+    # Combine results from all processes
+    samples = np.vstack(results)
     return samples
 
 
