@@ -2,8 +2,7 @@ import numpy as np
 import yfinance as yf
 import matplotlib.pyplot as plt
 import pandas as pd
-from rbm import RBM
-from rbm_new import *
+from rbm import *
 from utils import *
 import time
 np.random.seed(666)
@@ -20,7 +19,7 @@ start = time.time()
 # except FileNotFoundError:
 #     print("Downloading data...")
 #     data = data_download(currency_pairs, start_date="2022-01-01", end_date="2023-01-01")
-#     data.to_pickle('currencies_data.pkl')
+#     data.to_pickle('data/currencies_data.pkl')
 #     print(f"Done\n")
 
 
