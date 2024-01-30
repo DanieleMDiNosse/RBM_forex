@@ -4,90 +4,114 @@ from utils import *
 import multiprocessing
 np.random.seed(666)
 
-@nb.njit
-def initialize_rbm(num_visible, num_hidden):
-    # np.random.seed(666) # I set the seed in the main.py file
-    weights = np.asarray(np.random.uniform(
-        low=-0.1 * np.sqrt(6. / (num_hidden + num_visible)),
-                    high=0.1 * np.sqrt(6. / (num_hidden + num_visible)),
-                    size=(num_visible, num_hidden)))
+def initialize_rbm(data, num_visible, num_hidden):
+    np.random.seed(666) # I set the seed in the main.py file
+    # weights = np.asarray(np.random.uniform(
+    #     low=-0.1 * np.sqrt(6. / (num_hidden + num_visible)),
+    #                 high=0.1 * np.sqrt(6. / (num_hidden + num_visible)),
+    #                 size=(num_visible, num_hidden)))
+    weights = np.random.normal(0, 0.01, (num_visible, num_hidden))
     hidden_bias = np.zeros(num_hidden)
-    visible_bias = np.zeros(num_visible)
+    visible_bias = visibile_bias_init(data)
     
     return weights, hidden_bias, visible_bias
 
 @nb.njit
-def train(data, weights, hidden_bias, visible_bias, num_epochs, batch_size, learning_rate, k, monitoring=True):
+def sample_hidden(visible, weights, hidden_bias):
+        '''Sample the hidden units given the visible units (positive phase). 
+        During the positive phase, the network learns from the data.
+        This is thefore the data-driven phase.'''
+        hidden_activations = dot_product(visible, weights) + hidden_bias
+        hidden_probabilities = sigmoid(hidden_activations)
+        hidden_states = boolean_to_int(hidden_probabilities > np.random.random(hidden_probabilities.shape))
+        return hidden_probabilities, hidden_states
+
+@nb.njit
+def sample_visible(hidden, weights, visible_bias):
+    '''Sample the visible units given the hidden units (negative phase).
+    In this phase the network reconstructs the data. This is the recontruction-driven phase.'''
+    visible_activations = dot_product(hidden, weights.T) + visible_bias
+    visible_probabilities = sigmoid(visible_activations)
+    visible_states = boolean_to_int(visible_probabilities > np.random.random(visible_probabilities.shape))
+    return visible_probabilities, visible_states
+
+@nb.njit
+def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size, learning_rate, k, monitoring=True):
 
     num_samples = data.shape[0]
 
     reconstructed_error = []
+    # Set the training data that I will use for monitoring the free energy
+    start_idx = np.random.randint(low=0, high=num_samples-200)
+    data_subset = data[start_idx: start_idx+200]
+    f_energy = []
     for epoch in range(num_epochs):
-        for i in range(num_samples):
+        for i in range(0, num_samples, batch_size):
             v0 = data[i:i+batch_size]
             # Positive phase
-            h0_prob = sigmoid(dot_product(v0, weights) + hidden_bias)
-            h0 = boolean_to_int(h0_prob > np.random.random(h0_prob.shape))
+            pos_hidden_prob, pos_hidden_states = sample_hidden(v0, weights, hidden_bias)
 
+            neg_visible_states = v0.astype(np.int64)
             # Gibbs sampling
-            vk = np.copy(v0)
             for _ in range(k):
-                hk_prob = sigmoid(dot_product(vk, weights) + hidden_bias)
-                hk = boolean_to_int(hk_prob > np.random.random(hk_prob.shape))
-                vk_prob = sigmoid(dot_product(hk, weights.T) + visible_bias)
-                # I can avoid the conversion to int here
-                vk = boolean_to_int(vk_prob > np.random.random(vk_prob.shape))
+                # i-th positive phase
+                neg_hidden_prob , neg_hidden_states = sample_hidden(neg_visible_states, weights, hidden_bias)
+                # i-th negative phase
+                neg_visible_prob, neg_visible_states = sample_visible(neg_hidden_states, weights, visible_bias)
 
-            # Negative phase
-            hk_prob = sigmoid(dot_product(vk, weights) + hidden_bias)
+            neg_hidden_prob,  neg_hidden_states  = sample_hidden(neg_visible_states, weights, hidden_bias)
 
             # Update weights and biases
-            weights += learning_rate * (dot_product(v0.T, h0) - dot_product(vk_prob.T, hk_prob)) / batch_size
-            visible_bias += learning_rate * mean_axis_0(v0 - vk_prob) / batch_size
-            hidden_bias += learning_rate * mean_axis_0(h0 - hk_prob) / batch_size
+            positive_associations = dot_product(v0.T, pos_hidden_states)
+            negative_associations = dot_product(neg_visible_states.T, neg_hidden_states)
+
+            lr = learning_rate / batch_size
+            weights += lr * (positive_associations - negative_associations)
+            visible_bias += lr * mean_axis_0(v0 - neg_visible_states)
+            hidden_bias += lr * mean_axis_0(pos_hidden_states - neg_hidden_states)
     
         if monitoring:
-            # Compute the reconstruction error
-            # v0 = data
-            # h0_prob = _sigmoid(dot_product(v0, weights) + hidden_bias)
-            # h0 = (h0_prob > np.random.random(h0_prob.shape)).astype(int)
-            # vk_prob = _sigmoid(dot_product(h0, weights.T) + visible_bias)
-            # vk = (vk_prob > np.random.random(vk_prob.shape)).astype(int)
             if epoch % 100 == 0:
-                # Compute the reconstruction error
-                error = np.sum((v0 - vk) ** 2) / num_samples
-                print(f"Epoch: {epoch}")
-                print(error)
+                print(f"Epoch: {epoch}/{num_epochs}")
+                # Calculate reconstruction error
+                error = np.sum((v0 - neg_visible_states) ** 2) / batch_size
                 reconstructed_error.append(error)
 
-                # Compute the free energy of a subset of the data
-                start_idx = np.random.randint(low=0, high=num_samples-100)
-                v = data[start_idx: start_idx+100]
-                f_energy = free_energy(v, weights, visible_bias, hidden_bias)
-                print(np.mean(f_energy))
+                # Calculate free energy
+                start_idx = np.random.randint(low=0, high=val.shape[0]-200)
+                val_subset = val[start_idx: start_idx+200]
+                f_e_data = free_energy(data_subset, weights, visible_bias, hidden_bias)
+                f_e_val = free_energy(val_subset, weights, visible_bias, hidden_bias)
+                f_energy.append([f_e_data, f_e_val])
 
-        
-    return reconstructed_error, weights, hidden_bias, visible_bias
+    return reconstructed_error, f_energy, weights, hidden_bias, visible_bias
 
-@nb.njit
-def sample(weights, hidden_bias, visible_bias, num_samples, num_visible, K):
-    samples = np.zeros((num_samples, num_visible))
-    for i in range(num_samples):
-        random_input = np.random.randint(low=0, high=2, size=(1,num_visible))
-        if i % 100 == 0 and i != 0:
-                print(f"Sampled the first {i} samples")
-        for j in range(K):
-            h = sigmoid(dot_product(random_input, weights) + hidden_bias)
-            h = boolean_to_int(h > np.random.random(h.shape))
-            v = sigmoid(dot_product(h, weights.T) + visible_bias)
-            sample_k = boolean_to_int(v > np.random.random(v.shape))
-            random_input = sample_k
-        samples[i] = sample_k
-
+# @nb.njit
+def sample(num_visible, weights, hidden_bias, visible_bias, k, n_samples):
+    samples = np.random.randint(2, size=(n_samples, num_visible))
+    for _ in range(k):  # number of Gibbs steps
+        _, samples = sample_hidden(samples, weights, hidden_bias)
+        _, samples = sample_visible(samples, weights, visible_bias)
     return samples
+
+# @nb.njit
+# def sample(num_visible, weights, hidden_bias, visible_bias, k, num_samples):
+#     np.random.seed(666)
+#     samples = np.zeros((num_samples, num_visible))
+#     for i in range(num_samples):
+#         random_input = np.random.randint(low=0, high=2, size=(1,num_visible))
+#         if i % 100 == 0 and i != 0:
+#                 print(f"Sampled the first {i} samples")
+#         for _ in range(k):  # number of Gibbs steps
+#             _, samples = sample_hidden(samples, weights, hidden_bias)
+#             _, samples = sample_visible(samples, weights, visible_bias)
+#         samples[i] = sample_k
+
+#     return samples
 
 @nb.njit
 def sample_worker(start, end, weights, hidden_bias, visible_bias, num_visible, K):
+    np.random.seed(666)
     # This function will handle the sampling for a subset of samples
     samples = np.zeros((end - start, num_visible))
     for i in range(end-start):

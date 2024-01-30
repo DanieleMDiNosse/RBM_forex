@@ -30,5 +30,30 @@ class TestBinaryConversion(unittest.TestCase):
         # Check that the reconstructed data coincides with the original data
         np.testing.assert_allclose(self.data, self.data_reconstructed, atol=1e-4)
 
+class TestDotProduct(unittest.TestCase):
+
+    def test_dot_product_valid_input(self):
+        # Test the dot product with valid inputs
+        A = np.array([[1, 2], [3, 4]])
+        B = np.array([[2, 0], [1, 2]])
+        expected_result = np.array([[4, 4], [10, 8]])
+        np.testing.assert_array_equal(dot_product(A, B), expected_result, "Dot product is incorrect.")
+
+    def test_dot_product_invalid_input(self):
+        # Test the dot product with invalid (incompatible) inputs
+        A = np.array([[1, 2], [3, 4]])
+        B = np.array([[2, 0]])
+        with self.assertRaises(ValueError):
+            dot_product(A, B)
+
+    def test_dot_product_large_matrices(self):
+        # Optional: Test the dot product with larger matrices for performance
+        np.random.seed(0)
+        A = np.random.rand(100, 100)
+        B = np.random.rand(100, 100)
+        # No specific assertion, just checking if the function handles large matrices without error
+        result = dot_product(A, B)
+        self.assertEqual(result.shape, (100, 100), "Dot product result shape is incorrect for large matrices.")
+
 # Running the tests
 unittest.main(argv=[''], exit=False)
