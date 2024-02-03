@@ -7,7 +7,28 @@ import itertools
 from sklearn.decomposition import PCA
 import seaborn as sns
 import os
+import imageio
+from natsort import natsorted
 
+def create_animated_gif(folder_path, id, output_filename='animated.gif'):
+    """
+    Creates an animated GIF from all the images in the specified folder.
+
+    Args:
+    - folder_path: The path to the folder containing images.
+    - output_filename: The name of the output GIF file.
+
+    Returns:
+    None. An animated GIF is saved at the folder path.
+    """
+    images = []
+    for file_name in natsorted(os.listdir(folder_path)):
+        if file_name.endswith(('.png', '.jpg', '.jpeg', '.gif')) and file_name.startswith(id):
+            file_path = os.path.join(folder_path, file_name)
+            images.append(imageio.imread(file_path))
+    imageio.mimsave(os.path.join(folder_path, output_filename), images)
+
+    return None
 
 def data_download(currency_pairs, start_date, end_date, type='Close'):
     data = yf.download(currency_pairs, start=start_date, end=end_date)
@@ -68,34 +89,6 @@ def remove_missing_values(data):
         pass
     return data
 
-# def estimate_number_hidden_units(dataset):
-#     """Estimate the number of hidden units based on the average informational
-#     contents of a datavector."""
-#     # Convert dataset to tuples for counting
-#     tuple_dataset = map(tuple, dataset)
-
-#     # Calculate relative frequencies (empirical distribution)
-#     vector_counts = Counter(tuple_dataset)
-#     total_vectors = len(dataset)
-#     relative_frequencies = {vector: count / total_vectors for vector, count in vector_counts.items()}
-#     values = list(relative_frequencies.values())
-#     values.sort(reverse=True)
-#     import matplotlib.pyplot as plt
-#     plt.scatter(range(len(values)), values)
-#     plt.show()
-
-#     # Compute entropy of the empirical distribution
-#     entropy_empirical = entropy(list(relative_frequencies.values()), base=2)
-#     print(entropy_empirical)
-
-#     # Total information content
-#     total_info_content = entropy_empirical * total_vectors
-
-#     # Estimate number of parameters
-#     estimated_parameters = total_info_content / 10
-
-#     return int(estimated_parameters)
-
 def calculate_correlations(dataset):
     """
     Calculate Pearson, Spearman, and Kendall correlation coefficients for all 
@@ -140,79 +133,96 @@ def compute_tail_distributions(time_series):
     upper_tail = np.array([np.mean(sorted_series >= x) for x in sorted_series])
     return sorted_series, lower_tail, upper_tail
 
-def plot_tail_distributions(generated_samples, train_data, currencies_names):
+def plot_tail_distributions(generated_samples, train_data, currencies_names, id):
     """ Plot the upper and lower tail distribution functions for two time series """
-    fig, ax = plt.subplots(2, 2, figsize=(11, 5), tight_layout=True)
+    n_features = generated_samples.shape[1]
+    
+    # Determine the layout based on the number of features
+    if n_features > 1:
+        fig, axs = plt.subplots(2, 2, figsize=(11, 5), tight_layout=True)
+        axs = axs.flatten() # Flatten the axs array for easier indexing
+    else:
+        fig, axs = plt.subplots(1, 1, figsize=(11, 5), tight_layout=True)
+        axs = [axs] # Wrap the single axs object in a list for consistent access
+
     for i, title in zip(range(train_data.shape[1]), currencies_names):
         x1, lower_tail1, upper_tail1 = compute_tail_distributions(generated_samples[:,i])
         x2, lower_tail2, upper_tail2 = compute_tail_distributions(train_data[:,i])
-        row = i // 2
-        col = i % 2
-        ax[row, col].plot(x1, lower_tail1, 'blue', label='Lower Tail Generated Samples', alpha=0.8)
-        ax[row, col].plot(x2, lower_tail2, 'green', label='Lower Tail Training Data', alpha=0.8)
-        ax[row, col].plot(x1, upper_tail1, 'blue', linestyle='--', label='Upper Tail Generated Samples', alpha=0.8)
-        ax[row, col].plot(x2, upper_tail2, 'green', linestyle='--', label='Upper Tail Training Data', alpha=0.8)
-        ax[row, col].set_title(f"{title}")
-        ax[row, col].legend()
-    c = 0
-    while os.path.exists(f"output/tail_distributions_{c}.png"):
-        c += 1
-    plt.savefig(f"output/tail_distributions_{c}.png")
+        ax = axs[i]
+        ax.plot(x1, lower_tail1, 'blue', label='Lower Tail Generated Samples', alpha=0.8)
+        ax.plot(x2, lower_tail2, 'green', label='Lower Tail Training Data', alpha=0.8)
+        ax.plot(x1, upper_tail1, 'blue', linestyle='--', label='Upper Tail Generated Samples', alpha=0.8)
+        ax.plot(x2, upper_tail2, 'green', linestyle='--', label='Upper Tail Training Data', alpha=0.8)
+        ax.set_title(f"{title}")
+        ax.legend()
+
+    # Check if the output folder exists
+    if not os.path.exists("output/tail_distributions"):
+        os.makedirs("output/tail_distributions")
+
+    plt.savefig(f"output/tail_distributions/{id}_tail_distributions.png")
+    plt.close()
 
     return None
 
-def plot_distributions(generated_samples, train_data, currencies_names):
+def plot_distributions(generated_samples, train_data, currencies_names, id):
     """Plot the distributions of the generated samples and the training data"""
-    fig, ax = plt.subplots(2, 2, figsize=(11, 5), tight_layout=True)
+    n_features = generated_samples.shape[1]
+    
+    # Determine the layout based on the number of features
+    if n_features > 1:
+        fig, axs = plt.subplots(2, 2, figsize=(11, 5), tight_layout=True)
+        axs = axs.flatten() # Flatten the axs array for easier indexing
+    else:
+        fig, axs = plt.subplots(1, 1, figsize=(11, 5), tight_layout=True)
+        axs = [axs] # Wrap the single axs object in a list for consistent access
+    
     for i, title in zip(range(train_data.shape[1]), currencies_names):
-        row = i // 2
-        col = i % 2
-        ax[row, col].hist(generated_samples[:,i], bins=50, label="RBM samples", alpha=0.8)
-        ax[row, col].hist(train_data[:,i], bins=50, alpha=0.5, label="Original data")
-        ax[row, col].set_xlabel("Value")
-        ax[row, col].set_ylabel("Frequency")
-        ax[row, col].set_title(f"{title}")
-        ax[row, col].legend()
-    c = 0
-    while os.path.exists(f"output/distributions_{c}.png"):
-        c += 1
-    plt.savefig(f"output/distributions_{c}.png")
-    return None
+        ax = axs[i]
+        ax.hist(generated_samples[:,i], bins=50, label="RBM samples", alpha=0.8)
+        ax.hist(train_data[:,i], bins=50, alpha=0.5, label="Original data")
+        ax.set_xlabel("Value")
+        ax.set_ylabel("Frequency")
+        ax.set_title(f"{title}")
+        ax.legend()
 
-# def plot_qqplots(generated_samples, train_data, currencies_names):
-#     fig, ax = plt.subplots(2, 2, figsize=(11, 5), tight_layout=True)
-#     for i, title in zip(range(train_data.shape[1]), currencies_names):
-#         row = i // 2
-#         col = i % 2
-#         # Calculate quantiles
-#         quantiles1, quantiles2 = stats.probplot(generated_samples[:,i], dist="norm")[0][0], stats.probplot(train_data[:,i], dist="norm")[0][0]
-#         (osm, osr), (slope, intercept, r) = stats.probplot(generated_samples[:,i], dist="norm", sparams=(train_data[:,i].mean(), train_data[:,i].std()))
-#         # Create QQ plot
-#         ax[row, col].scatter(quantiles1, quantiles2)
-#         ax[row, col].plot(osm, slope * osm + intercept, color='r', alpha=0.5)
-#         ax[row, col].set_title(f'{title}')
-#         # ax[row, col].legend()
+    # Check if the output folder exists
+    if not os.path.exists("output/distributions"):
+        os.makedirs("output/distributions")
 
-def qq_plots(generated_samples, train_data, currencies_names):
+    plt.savefig(f"output/distributions/{id}_distributions.png")
+    plt.close()
+
+def qq_plots(generated_samples, train_data, currencies_names, id):
     """Plot the QQ plots for the generated samples and the training data"""
-    fig, ax = plt.subplots(2, 2, figsize=(11, 5), tight_layout=True)
+    n_features = generated_samples.shape[1]
+    
+    # Determine the layout based on the number of features
+    if n_features > 1:
+        fig, axs = plt.subplots(2, 2, figsize=(11, 5), tight_layout=True)
+        axs = axs.flatten() # Flatten the axs array for easier indexing
+    else:
+        fig, axs = plt.subplots(1, 1, figsize=(11, 5), tight_layout=True)
+        axs = [axs] # Wrap the single axs object in a list for consistent access
+
     for i, title in zip(range(train_data.shape[1]), currencies_names):
         gen_samples = np.sort(generated_samples[:, i])
         original_data = np.sort(train_data[:, i])
         gen_quantiles = np.percentile(gen_samples, q=np.linspace(0, 100, len(gen_samples)))
         train_quantiles = np.percentile(original_data, q=np.linspace(0, 100, len(original_data)))
-        row = i // 2
-        col = i % 2
-        ax[row, col].scatter(gen_quantiles, train_quantiles, s=4, alpha=0.8)
-        ax[row, col].plot([0, 1], [0, 1], transform=ax[row, col].transAxes, ls="--", c=".3")
-        ax[row, col].set_xlabel("Generated samples quantiles")
-        ax[row, col].set_ylabel("Training data quantiles")
-        ax[row, col].set_title(f"{title}")
+        ax = axs[i]
+        ax.scatter(gen_quantiles, train_quantiles, s=4, alpha=0.8)
+        ax.plot([0, 1], [0, 1], transform=ax.transAxes, ls="--", c=".3")
+        ax.set_xlabel("Generated samples quantiles")
+        ax.set_ylabel("Training data quantiles")
+        ax.set_title(f"{title}")
 
-    c = 0
-    while os.path.exists(f"output/QQ_plots_{c}.png"):
-        c += 1
-    plt.savefig(f"output/QQ_plots_{c}.png")
+    # Check if the output folder exists
+    if not os.path.exists("output/qq_plots"):
+        os.makedirs("output/qq_plots")
+
+    plt.savefig(f"output/qq_plots/{id}_qq_plots.png")
+    plt.close()
 
 
 @njit
@@ -269,12 +279,7 @@ def free_energy(v, weights, visible_bias, hidden_bias):
     v_float = v.astype(np.float64)
     return np.mean(-np.sum(np.log(1 + np.exp(v_float @ weights + hidden_bias)), axis=1) - v_float @ visible_bias)
 
-def visibile_bias_init(data_binary):
-    frequencies = np.mean(data_binary, axis=0)
-    visible_bias_t0 = np.log(frequencies / (1 - frequencies))
-    return visible_bias_t0
-
-def plot_pca_with_marginals(dataset_gen, dataset_real):
+def plot_pca_with_marginals(dataset_gen, dataset_real, id='C'):
     # Perform PCA on both datasets
     pca1 = PCA(n_components=2)
     pca2 = PCA(n_components=2)
@@ -298,38 +303,73 @@ def plot_pca_with_marginals(dataset_gen, dataset_real):
     plt.subplots_adjust(top=0.9)
     g.fig.suptitle("First two PCA Components of real and fake dataset with marginal distributions")
 
-    c = 0
-    while os.path.exists(f"output/PCA_{c}.png"):
-        c += 1
-    plt.savefig(f"output/PCA_{c}.png")
+    # Check if the output folder exists
+    if not os.path.exists("output/PCA"):
+        os.makedirs("output/PCA")
+
+    plt.savefig(f"output/PCA/{id}_PCA.png")
+    plt.close()
 
     return None
 
-if __name__ == '__main__':
-    # Define the currency pairs
-    currency_pairs = ['EURUSD=X', 'GBPUSD=X', 'USDJPY=X', 'USDCAD=X']
+def monitoring_plots(weights, hidden_bias, visible_bias, deltas, pos_hidden_prob, epoch, id='C'):
+    delta_w, delta_hidden_bias, delta_visible_bias = deltas
 
-    # Check if the data is already downloaded
-    try:
-        data = pd.read_pickle('currencies_data.pkl')
-    except FileNotFoundError:
-        print("Downloading data...")
-        data = data_download(currency_pairs, start_date="2022-01-01", end_date="2023-01-01")
-        data.to_pickle('currencies_data.pkl')
-        print('Done')
-    # Example usage
-    # Define your real valued dataset here as a 2D list
-    real_data_example = pd.DataFrame(np.random.normal(size=(5,2)))  # Replace with actual data
-    print(real_data_example.shape)
-    print(real_data_example)
+    # Check if the output folder exists
+    if not os.path.exists("output/weights_receptive_field"):
+        os.makedirs("output/weights_receptive_field")
+    if not os.path.exists("output/historgrams"):
+        os.makedirs("output/historgrams")
 
-    # Convert to binary
-    binary_data, bounds = from_real_to_binary(real_data_example)
-    print(binary_data.shape)
-    print(binary_data)
+    # Display a grayscale image of the weights
+    '''For domains in which the visible units have spatial or temporal structure (e.g. images or speech)
+    it is very helpful to display, for each hidden unit, the weights connecting that hidden unit to the
+    visible units. These “receptive” fields are a good way of visualizing what features the hidden units
+    have learned'''
+    fig, axes = plt.subplots(1, 2, figsize=(12, 12), tight_layout=True)
+    img0 = axes[0].imshow(weights, cmap="gray")
+    fig.colorbar(img0, ax=axes[0], fraction=0.046, pad=0.04)
+    axes[0].set_xlabel("Hidden units")
+    axes[0].set_ylabel("Visible units")
+    axes[0].set_title(f"Weights at epoch {epoch}")
+    # Display a grayscale image of the hidden probabilities
+    '''This immediately allows you to see if some hidden units are never used or if some training cases
+    activate an unusually large or small number of hidden units. It also shows how certain the hidden
+    units are. When learning is working properly, this display should look thoroughly random without
+    any obvious vertical or horizontal lines'''
+    img1 = axes[1].imshow(pos_hidden_prob, cmap="gray")
+    fig.colorbar(img1, ax=axes[1], fraction=0.046, pad=0.04)
+    axes[1].set_ylabel("Training vectors")
+    axes[1].set_xlabel("Hidden units")
+    axes[1].set_title(f"Hidden units probabilities epoch {epoch}")
+    plt.savefig(f"output/weights_receptive_field/{id}_weights_receptivefield_{epoch}.png")
+    plt.close()
 
-    # Convert back to real values
-    reconstructed_real_data = from_binary_to_real(binary_data, bounds[0], bounds[1])
+    # Display the histograms of the weights, hidden and visible biases
+    '''A good rule of thumb for setting the learning rate (Max Welling, personal communication, 2002) is
+    to look at a histogram of the weight updates and a histogram of the weights. The updates should
+    be about 10e-3 times the weights (to within about an order of magnitude)'''
+    x_w, x_h, x_v = np.arange(weights.ravel().size), np.arange(hidden_bias.size), np.arange(visible_bias.size)
+    fig, axes = plt.subplots(2, 3, figsize=(15, 5), tight_layout=True)
+    axes[1,0].bar(x_w, delta_w.ravel()/weights.ravel(), color='k', alpha=0.5)
+    axes[1,0].set_title(r"$\frac{\Delta W}{W}$")
+    axes[0,0].bar(x_w, weights.ravel(), color='k', alpha=0.8)
+    # ax = axes[0,0].twiny()
+    # ax.hist(weights.ravel(), bins=40, density=True, color='purple', alpha=0.3)
+    axes[0,0].set_title("Weights")
+    axes[0,1].bar(x_h, hidden_bias, color='k', alpha=0.8)
+    axes[0,1].set_title("Hidden bias")
+    axes[1,1].bar(x_h, delta_hidden_bias, color='k', alpha=0.5)
+    axes[1,1].set_title(r"$\Delta h$")
+    
+    axes[0,2].bar(x_v, visible_bias, color='k', alpha=0.8)
+    axes[0,2].set_title("Visible bias")
+    axes[1,2].bar(x_v, delta_visible_bias, color='k', alpha=0.5)
+    axes[1,2].set_title(r"$\Delta v$")
+    plt.savefig(f"output/historgrams/{id}_histograms_{epoch}.png")
+    plt.suptitle(f"Epoch {epoch}")
+    plt.close()
 
-    print(reconstructed_real_data.shape)
-    print(reconstructed_real_data)  # Displaying the binary and reconstructed data for checking
+
+    return None
+

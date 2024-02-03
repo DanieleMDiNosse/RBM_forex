@@ -4,6 +4,11 @@ from utils import *
 import multiprocessing
 np.random.seed(666)
 
+def visibile_bias_init(data_binary):
+    frequencies = np.mean(data_binary, axis=0)
+    visible_bias_t0 = np.log(frequencies / (1 - frequencies))
+    return visible_bias_t0
+
 def initialize_rbm(data, num_visible, num_hidden):
     np.random.seed(666) # I set the seed in the main.py file
     # weights = np.asarray(np.random.uniform(
@@ -35,16 +40,23 @@ def sample_visible(hidden, weights, visible_bias):
     visible_states = boolean_to_int(visible_probabilities > np.random.random(visible_probabilities.shape))
     return visible_probabilities, visible_states
 
-@nb.njit
-def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size, learning_rate, k, monitoring=True):
+# @nb.njit
+def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size, learning_rate, k, monitoring=True, id='C'):
 
     num_samples = data.shape[0]
 
     reconstructed_error = []
+    f_energy = []
+
+    # Initialize velocities
+    velocity_w = np.zeros_like(weights)
+    velocity_hidden_bias = np.zeros_like(hidden_bias)
+    velocity_visible_bias = np.zeros_like(visible_bias)
+
     # Set the training data that I will use for monitoring the free energy
     start_idx = np.random.randint(low=0, high=num_samples-200)
     data_subset = data[start_idx: start_idx+200]
-    f_energy = []
+
     for epoch in range(num_epochs):
         for i in range(0, num_samples, batch_size):
             v0 = data[i:i+batch_size]
@@ -66,12 +78,27 @@ def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size,
             negative_associations = dot_product(neg_visible_states.T, neg_hidden_states)
 
             lr = learning_rate / batch_size
-            weights += lr * (positive_associations - negative_associations)
-            visible_bias += lr * mean_axis_0(v0 - neg_visible_states)
-            hidden_bias += lr * mean_axis_0(pos_hidden_states - neg_hidden_states)
+            penalty = np.sum(weights.ravel()) * 0.001
+            delta_w = lr * (positive_associations - negative_associations) - penalty
+            delta_hidden_bias = lr * mean_axis_0(pos_hidden_states - neg_hidden_states)
+            delta_visible_bias = lr * mean_axis_0(v0 - neg_visible_states)
+            deltas = [delta_w, delta_hidden_bias, delta_visible_bias]
+
+            # Apply momentum
+            velocity_w = 0.5 * velocity_w + delta_w
+            velocity_hidden_bias = 0.5 * velocity_hidden_bias + delta_hidden_bias
+            velocity_visible_bias = 0.5 * velocity_visible_bias + delta_visible_bias
+
+            # Update weights and biases with velocity
+            weights += velocity_w
+            hidden_bias += velocity_hidden_bias
+            visible_bias += velocity_visible_bias
+            # weights += delta_w
+            # visible_bias += delta_visible_bias
+            # hidden_bias += delta_hidden_bias
     
         if monitoring:
-            if epoch % 100 == 0:
+            if epoch % 50  == 0 and epoch !=0:
                 print(f"Epoch: {epoch}/{num_epochs}")
                 # Calculate reconstruction error
                 error = np.sum((v0 - neg_visible_states) ** 2) / batch_size
@@ -83,6 +110,9 @@ def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size,
                 f_e_data = free_energy(data_subset, weights, visible_bias, hidden_bias)
                 f_e_val = free_energy(val_subset, weights, visible_bias, hidden_bias)
                 f_energy.append([f_e_data, f_e_val])
+
+                # Plot for monitoring
+                monitoring_plots(weights, hidden_bias, visible_bias, deltas, pos_hidden_prob, epoch, id)
 
     return reconstructed_error, f_energy, weights, hidden_bias, visible_bias
 

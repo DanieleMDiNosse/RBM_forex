@@ -1,7 +1,7 @@
 import numpy as np
 import yfinance as yf
 import matplotlib.pyplot as plt
-plt.style.use('seaborn')
+# plt.style.use('seaborn')
 from sklearn.model_selection import train_test_split
 import pandas as pd
 from rbm import *
@@ -9,23 +9,27 @@ from utils import *
 import time
 import argparse
 import os
-np.random.seed(666)
+
 
 # Parse the arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("--train_rbm", "-t", action="store_true", help="Train the RBM. Default: False")
 parser.add_argument("--epochs", "-e", type=int, default=1500, help="Number of epochs. Default: 1500")
-parser.add_argument("--learning_rate", "-lr", type=float, default=0.01, help="Learning rate, Default: 0.01")
+parser.add_argument("--learning_rate", "-lr", type=float, default=0.01, help="Learning rate. Default: 0.01")
+parser.add_argument("--batch_size", "-b", type=int, default=10, help="Batch size for training. Default: 10")
 parser.add_argument("--continue_train", "-c", action="store_true", help="Load the weights and continue training for the specified number of epochs. Default: False")
+parser.add_argument("--k_step", "-k", type=int, default=1, help="Number of Gibbs sampling steps in the training process. Default: 1")
 args = parser.parse_args()
 
 
 start = time.time()
-print(f"TRAINING RBM ON CURRENCY DATA\n")
 # Define the currency pairs
 currency_pairs = ['EURUSD=X', 'GBPUSD=X', 'USDJPY=X', 'USDCAD=X']
 start_date = "1999-01-01"
 end_date = "2023-01-01"
+id = f'C{os.getpid()}'
+print(f"{id} - TRAINING RBM ON CURRENCY DATA\n")
+np.random.seed(666)
 # Check if the data is already downloaded
 try:
     print("Loading data...")
@@ -46,6 +50,7 @@ data_binary, (X_min, X_max) = from_real_to_binary(data)
 
 # Split the data into train and test sets
 train_data, val = train_test_split(data_binary, test_size=0.1)
+train_data, val = train_data[:int(train_data.shape[0]-train_data.shape[0]%args.batch_size)], val[:int(val.shape[0]-val.shape[0]%args.batch_size)]
 print(f"Data entries type:\n\t{data[np.random.randint(0, data.shape[0])].dtype}")
 print(f"Data binary entries type:\n\t{data_binary[np.random.randint(0, data_binary.shape[0])].dtype}")
 print(f"Data binary shape:\n\t{data_binary.shape}")
@@ -71,7 +76,7 @@ if args.train_rbm:
 
     # Train the RBM
     reconstruction_error, f_energy, weights, hidden_bias, visible_bias = train(
-        train_data, val,  weights, hidden_bias, visible_bias, num_epochs=args.epochs, batch_size=10, learning_rate=args.learning_rate, k=10, monitoring=True)
+        train_data, val,  weights, hidden_bias, visible_bias, num_epochs=args.epochs, batch_size=args.batch_size, learning_rate=args.learning_rate, k=args.k_step, monitoring=True, id=id)
     np.save("output/weights.npy", weights)
     np.save("output/hidden_bias.npy", hidden_bias)
     np.save("output/visible_bias.npy", visible_bias)
@@ -102,15 +107,8 @@ ax[1].legend()
 ax[1].set_xlabel("Epoch")
 ax[1].set_ylabel("Free energy")
 ax[1].set_title("Free energy")
-c = 0
-while os.path.exists(f"output/reconstruction_error_{c}.png"):
-    c += 1
-plt.savefig(f"output/reconstruction_error_{c}.png")
+plt.savefig(f"output/{id}_reconstruction_error.png")
 
-# try:
-#     samples = np.load(f"output/samples_{start_date}_{end_date}_{args.epochs}_{args.learning_rate}.npy")
-#     print(f"Samples were already been generated. Loaded from the output folder.\n")
-# except FileNotFoundError:
 print("Sampling from the RBM...")
 samples = sample(train_data.shape[1], weights, hidden_bias, visible_bias, k=1000, n_samples=train_data.shape[0])
 np.save(f"output/samples_{start_date}_{end_date}_{args.epochs}_{args.learning_rate}.npy", samples)
@@ -126,8 +124,8 @@ print(f"Total time: {total_time} seconds")
 
 # Compute correlations
 print("Computing correlations...")
-currencies_pairs = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCAD']
-currencies_pairs = list(itertools.combinations(currencies_pairs, 2))
+currencies = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCAD']
+currencies_pairs = list(itertools.combinations(currencies, 2))
 
 gen_correlations = calculate_correlations(pd.DataFrame(samples))
 original_correlations = calculate_correlations(pd.DataFrame(data[:train_data.shape[0]]))
@@ -143,19 +141,17 @@ print(f"Done\n")
 
 data = data[:train_data.shape[0]].reshape(samples.shape)
 # Plot the samples and the recontructed error
-plot_distributions(samples, data, currencies_pairs)
+plot_distributions(samples, data, currencies, id)
 
 # Generate QQ plot data
-qq_plots(samples, data, currencies_pairs)
+qq_plots(samples, data, currencies, id)
 
 # Plot upper and lower tail distribution functions
-plot_tail_distributions(samples, data, currencies_pairs)
+plot_tail_distributions(samples, data, currencies, id)
 
 #Plot PCA with 2 components
-plot_pca_with_marginals(samples, data)
+plot_pca_with_marginals(samples, data, id)
 
-plt.show()
-
-'''Things to do:
-- t-SNE of generated and original data to check if the RBM generates enough variability
-- Check hidden activation patterns. For example I can see if there is some common pattern in stree periods'''
+# Create the animated gifs
+create_animated_gif('output/historgrams', id, output_filename=f'{id}_histograms.gif')
+create_animated_gif('output/weights_receptive_field', id, output_filename=f'{id}_weights_receptive_field.gif')
