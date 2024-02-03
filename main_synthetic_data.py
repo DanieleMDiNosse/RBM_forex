@@ -26,6 +26,7 @@ args = parser.parse_args()
 start = time.time()
 id = f'S{os.getpid()}'
 print(f"{id} - TRAINING RBM ON SYNTHETIC DATA\n")
+
 # retrive the id of the process
 # Create a synthetic normal dataset
 if args.dataset == "normal":
@@ -45,6 +46,10 @@ if args.dataset == "AR3":
     for i in range(3, data.shape[0]):
         data[i] = 0.5 * data[i-1] + 0.3 * data[i-2] + 0.2 * data[i-3] + np.random.normal(0, 1)
     data = data.reshape(-1, args.num_features)
+if args.dataset == "mixed":
+    data = mixed_dataset(n_samples=10000)
+
+names = [f'Dataset {i}' for i in range(data.shape[1])]
 
 # Convert the data to binary
 data_binary, (X_min, X_max) = from_real_to_binary(data)
@@ -68,8 +73,9 @@ if args.train_rbm:
     print(f"Initial visible bias:\n\t{visible_bias}\n")
 
     # Train the RBM
+    variables_for_monitoring = [X_min, X_max, names]
     reconstruction_error, f_energy, weights, hidden_bias, visible_bias = train(
-        train_data, val,  weights, hidden_bias, visible_bias, num_epochs=args.epochs, batch_size=args.batch_size, learning_rate=args.learning_rate, k=args.k_step, monitoring=True,id=id)
+        train_data, val,  weights, hidden_bias, visible_bias, num_epochs=args.epochs, batch_size=args.batch_size, learning_rate=args.learning_rate, k=args.k_step, monitoring=True,id=id, var_mon=variables_for_monitoring)
     np.save("output/weights.npy", weights)
     np.save("output/hidden_bias.npy", hidden_bias)
     np.save("output/visible_bias.npy", visible_bias)
@@ -88,7 +94,10 @@ if args.train_rbm:
     ax[1].set_xlabel("Epoch")
     ax[1].set_ylabel("Free energy")
     ax[1].set_title("Free energy")
-    plt.savefig("output/rec_fenergy.png")
+    # Check if the output folder exists
+    if not os.path.exists("output/rec_fenergy"):
+        os.makedirs("output/rec_fenergy")
+    plt.savefig(f"output/rec_fenergy/{id}_rec_fenergy.png")
 else:
     print("Loading weights...")
     weights = np.load("output/weights.npy")
@@ -116,20 +125,26 @@ for key, value in correlations.items():
 print(f"Done\n")
 
 train_data = data[:train_data.shape[0]].reshape(samples.shape)
-currencies = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCAD']
 
-# Plot the samples and the recontructed error
-plot_distributions(samples, train_data, currencies, id)
+# Plot the original and generated distributions
+plot_distributions(samples, train_data, names, id)
 
 # Generate QQ plot data
-qq_plots(samples, train_data, currencies, id)
+qq_plots(samples, train_data, names, id)
 
 # Plot upper and lower tail distribution functions
-plot_tail_distributions(samples, train_data, currencies, id)
+plot_tail_distributions(samples, train_data, names, id)
 
-if args.num_features > 2:
+if samples.shape[1] > 2:
     # Plot PCA components with marginals
     plot_pca_with_marginals(samples, train_data, id)
+
+# Create the animated gifs
+print("Creating animated gifs...")
+create_animated_gif('output/historgrams', id, output_filename=f'{id}_histograms.gif')
+create_animated_gif('output/weights_receptive_field', id, output_filename=f'{id}_weights_receptive_field.gif')
+print(f"Done\n")
+
 
 
 

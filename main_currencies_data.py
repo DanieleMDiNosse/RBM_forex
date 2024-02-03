@@ -25,6 +25,7 @@ args = parser.parse_args()
 start = time.time()
 # Define the currency pairs
 currency_pairs = ['EURUSD=X', 'GBPUSD=X', 'USDJPY=X', 'USDCAD=X']
+currencies = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCAD']
 start_date = "1999-01-01"
 end_date = "2023-01-01"
 id = f'C{os.getpid()}'
@@ -75,8 +76,9 @@ if args.train_rbm:
     print(f"Initial visible bias:\n\t{visible_bias}\n")
 
     # Train the RBM
+    variables_for_monitoring = [X_min, X_max, currencies]
     reconstruction_error, f_energy, weights, hidden_bias, visible_bias = train(
-        train_data, val,  weights, hidden_bias, visible_bias, num_epochs=args.epochs, batch_size=args.batch_size, learning_rate=args.learning_rate, k=args.k_step, monitoring=True, id=id)
+        train_data, val,  weights, hidden_bias, visible_bias, num_epochs=args.epochs, batch_size=args.batch_size, learning_rate=args.learning_rate, k=args.k_step, monitoring=True, id=id, var_mon=variables_for_monitoring)
     np.save("output/weights.npy", weights)
     np.save("output/hidden_bias.npy", hidden_bias)
     np.save("output/visible_bias.npy", visible_bias)
@@ -124,7 +126,6 @@ print(f"Total time: {total_time} seconds")
 
 # Compute correlations
 print("Computing correlations...")
-currencies = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCAD']
 currencies_pairs = list(itertools.combinations(currencies, 2))
 
 gen_correlations = calculate_correlations(pd.DataFrame(samples))
@@ -139,6 +140,7 @@ for pair, value in zip(currencies_pairs, gen_correlations.values()):
     print(f"Pairs: {pair}, Value: {value}")
 print(f"Done\n")
 
+print("Plotting results...")
 data = data[:train_data.shape[0]].reshape(samples.shape)
 # Plot the samples and the recontructed error
 plot_distributions(samples, data, currencies, id)
@@ -151,7 +153,10 @@ plot_tail_distributions(samples, data, currencies, id)
 
 #Plot PCA with 2 components
 plot_pca_with_marginals(samples, data, id)
+print(f"Done\n")
 
 # Create the animated gifs
+print("Creating animated gifs...")
 create_animated_gif('output/historgrams', id, output_filename=f'{id}_histograms.gif')
 create_animated_gif('output/weights_receptive_field', id, output_filename=f'{id}_weights_receptive_field.gif')
+print(f"Done\n")

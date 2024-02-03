@@ -41,8 +41,8 @@ def sample_visible(hidden, weights, visible_bias):
     return visible_probabilities, visible_states
 
 # @nb.njit
-def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size, learning_rate, k, monitoring=True, id='C'):
-
+def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size, learning_rate, k, monitoring, id, var_mon):
+    X_min, X_max, currencies = var_mon
     num_samples = data.shape[0]
 
     reconstructed_error = []
@@ -98,7 +98,7 @@ def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size,
             # hidden_bias += delta_hidden_bias
     
         if monitoring:
-            if epoch % 50  == 0 and epoch !=0:
+            if epoch % 100  == 0 and epoch !=0:
                 print(f"Epoch: {epoch}/{num_epochs}")
                 # Calculate reconstruction error
                 error = np.sum((v0 - neg_visible_states) ** 2) / batch_size
@@ -114,6 +114,31 @@ def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size,
                 # Plot for monitoring
                 monitoring_plots(weights, hidden_bias, visible_bias, deltas, pos_hidden_prob, epoch, id)
 
+            # if epoch % 100 == 0 and epoch != 0:
+            #     print("Sampling from the RBM...")
+            #     samples = sample(data.shape[1], weights, hidden_bias, visible_bias, k=1000, n_samples=data.shape[0])
+            #     print(f"Done\n")
+
+            #     # Convert to real values
+            #     print("Converting the samples from binary to real values...")
+            #     samples = from_binary_to_real(samples, X_min, X_max).to_numpy()
+            #     print(f"Done\n")
+
+            #     print("Plotting results...")
+            #     data_plot = data[:data.shape[0]].reshape(samples.shape)
+            #     # Plot the samples and the recontructed error
+            #     plot_distributions(samples, data_plot, currencies, id)
+
+            #     # Generate QQ plot data
+            #     qq_plots(samples, data_plot, currencies, id)
+
+            #     # Plot upper and lower tail distribution functions
+            #     plot_tail_distributions(samples, data_plot, currencies, id)
+
+            #     if samples.shape[1] > 2:
+            #         #Plot PCA with 2 components
+            #         plot_pca_with_marginals(samples, data_plot, id)
+            #     print(f"Done\n")
     return reconstructed_error, f_energy, weights, hidden_bias, visible_bias
 
 # @nb.njit

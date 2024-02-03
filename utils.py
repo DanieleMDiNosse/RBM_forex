@@ -9,6 +9,7 @@ import seaborn as sns
 import os
 import imageio
 from natsort import natsorted
+from scipy.stats import weibull_min, beta
 
 def create_animated_gif(folder_path, id, output_filename='animated.gif'):
     """
@@ -73,6 +74,41 @@ def from_binary_to_real(X_binary, X_min, X_max):
     X_real = pd.DataFrame(X_real)
 
     return X_real
+
+def mixed_dataset(n_samples):
+
+    # Column 1: Mix of two normal distributions
+    mean1, var1 = 0, 1  # Mean and variance for the first normal distribution
+    mean2, var2 = 5, 2  # Mean and variance for the second normal distribution
+    samples1 = np.random.normal(mean1, np.sqrt(var1), n_samples // 2)
+    samples2 = np.random.normal(mean2, np.sqrt(var2), n_samples // 2)
+    column1 = np.concatenate([samples1, samples2])
+
+    # Column 2: Simple normal distribution
+    mean, var = 10, 3  # Mean and variance
+    column2 = np.random.normal(mean, np.sqrt(var), n_samples)
+
+    # Column 3: Weibull distribution
+    shape, scale = 1, 1.5
+    column3 = weibull_min.rvs(shape, scale=scale, size=n_samples)
+
+    # Column 4: Beta distribution
+    alpha, beta_param = 2, 5
+    column4 = beta.rvs(alpha, beta_param, size=n_samples)
+
+    # Creating the DataFrame
+    df = pd.DataFrame({
+        "Mixed_Normal": column1,
+        "Simple_Normal": column2,
+        "Weibull": column3,
+        "Beta": column4
+    })
+
+    # Shuffling all the rows
+    df = df.sample(frac=1).reset_index(drop=True)
+
+    return df.values
+
 
 def remove_missing_values(data):
     """Check for missing values. If there is a missing value, drop the corresponding row."""
@@ -352,6 +388,7 @@ def monitoring_plots(weights, hidden_bias, visible_bias, deltas, pos_hidden_prob
     x_w, x_h, x_v = np.arange(weights.ravel().size), np.arange(hidden_bias.size), np.arange(visible_bias.size)
     fig, axes = plt.subplots(2, 3, figsize=(15, 5), tight_layout=True)
     axes[1,0].bar(x_w, delta_w.ravel()/weights.ravel(), color='k', alpha=0.5)
+    axes[1,0].set_yscale('log')
     axes[1,0].set_title(r"$\frac{\Delta W}{W}$")
     axes[0,0].bar(x_w, weights.ravel(), color='k', alpha=0.8)
     # ax = axes[0,0].twiny()
@@ -367,7 +404,7 @@ def monitoring_plots(weights, hidden_bias, visible_bias, deltas, pos_hidden_prob
     axes[1,2].bar(x_v, delta_visible_bias, color='k', alpha=0.5)
     axes[1,2].set_title(r"$\Delta v$")
     plt.savefig(f"output/historgrams/{id}_histograms_{epoch}.png")
-    plt.suptitle(f"Epoch {epoch}")
+    fig.suptitle(f"Epoch {epoch}")
     plt.close()
 
 
