@@ -167,3 +167,6 @@ cython_debug/
 
 # Everything in output
 output/
+
+# sh files
+*.sh*
