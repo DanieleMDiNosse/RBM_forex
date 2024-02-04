@@ -15,7 +15,7 @@ import os
 # Parse the arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("--train_rbm", "-t", action="store_true", help="Train the RBM")
-parser.add_argument("--dataset", "-d", type=str, default="normal", help="Dataset to use. Options: normal, bi_normal, poisson, AR3")
+parser.add_argument("--dataset", "-d", type=str, default="normal", help="Dataset to use. Options: normal, bi_normal, poisson, AR3, mixed")
 parser.add_argument("--num_features", "-f", type=int, default=1, help="Number of features. Default: 1")
 parser.add_argument("--epochs", "-e", type=int, default=1500, help="Number of epochs. Default: 1500")
 parser.add_argument("--learning_rate", "-lr", type=float, default=0.01, help="Learning rate, Default: 0.01")
@@ -48,6 +48,11 @@ if args.dataset == "AR3":
     data = data.reshape(-1, args.num_features)
 if args.dataset == "mixed":
     data = mixed_dataset(n_samples=10000)
+    # features = data.shape[1]
+    # # Shuffle the data
+    # data = data.ravel()
+    # np.random.shuffle(data)
+    # data = data.reshape(-1, features)
 
 names = [f'Dataset {i}' for i in range(data.shape[1])]
 
@@ -117,9 +122,16 @@ print(f"Done\n")
 total_time = time.time() - start
 print(f"Total time: {total_time} seconds")
 
-# Compute correlations
+# Compute correlations on generated data
 print("Computing correlations...")
+print('Generated')
 correlations = calculate_correlations(pd.DataFrame(samples))
+for key, value in correlations.items():
+    print(f"Pais: {key}, Value: {value}")
+
+# Compute correlations on original data
+correlations = calculate_correlations(pd.DataFrame(data))
+print('Original')
 for key, value in correlations.items():
     print(f"Pais: {key}, Value: {value}")
 print(f"Done\n")
@@ -144,6 +156,7 @@ print("Creating animated gifs...")
 create_animated_gif('output/historgrams', id, output_filename=f'{id}_histograms.gif')
 create_animated_gif('output/weights_receptive_field', id, output_filename=f'{id}_weights_receptive_field.gif')
 print(f"Done\n")
+print(f'Finished id {id}!')
 
 
 

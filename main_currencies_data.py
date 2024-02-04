@@ -3,6 +3,7 @@ import yfinance as yf
 import matplotlib.pyplot as plt
 # plt.style.use('seaborn')
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 import pandas as pd
 from rbm import *
 from utils import *
@@ -43,8 +44,15 @@ except FileNotFoundError:
     data = data.values
     print(f"Done\n")
 
+# Apply log transformation
+data = np.log(data)
+# Compute returns
+data = np.diff(data, axis=0)
 # Remove missing values
 data = remove_missing_values(data)
+# Normalize data
+scaler = StandardScaler()
+data = scaler.fit_transform(data)
 
 # Convert the data to binary
 data_binary, (X_min, X_max) = from_real_to_binary(data)
@@ -106,13 +114,20 @@ ax[0].set_title("Reconstruction error")
 ax[1].plot(np.array(f_energy)[:,0], 'green', label="Training data", alpha=0.7)
 ax[1].plot(np.array(f_energy)[:,1], 'blue', label="Validation data", alpha=0.7)
 ax[1].legend()
-ax[1].set_xlabel("Epoch")
+ax[1].set_xlabel("Epoch x 100")
 ax[1].set_ylabel("Free energy")
 ax[1].set_title("Free energy")
-plt.savefig(f"output/{id}_reconstruction_error.png")
+# Check if the output folder exists
+if not os.path.exists("output/rec_fenergy"):
+    os.makedirs("output/rec_fenergy")
+plt.savefig(f"output/rec_fenergy/{id}_rec_fenergy.png")
 
 print("Sampling from the RBM...")
 samples = sample(train_data.shape[1], weights, hidden_bias, visible_bias, k=1000, n_samples=train_data.shape[0])
+print(f"Done\n")
+print("Inverse_transform method to reverse the normalization...")
+samples = scaler.inverse_transform(samples)
+data_plot = scaler.inverse_transform(data)
 np.save(f"output/samples_{start_date}_{end_date}_{args.epochs}_{args.learning_rate}.npy", samples)
 print(f"Done\n")
 
@@ -157,6 +172,10 @@ print(f"Done\n")
 
 # Create the animated gifs
 print("Creating animated gifs...")
-create_animated_gif('output/historgrams', id, output_filename=f'{id}_histograms.gif')
-create_animated_gif('output/weights_receptive_field', id, output_filename=f'{id}_weights_receptive_field.gif')
+try:
+    create_animated_gif('output/historgrams', id, output_filename=f'{id}_histograms.gif')
+    create_animated_gif('output/weights_receptive_field', id, output_filename=f'{id}_weights_receptive_field.gif')
+except Exception as e:
+    print(f"Error creating animated gifs: {e}")
 print(f"Done\n")
+print(f'Finished id {id}!')
