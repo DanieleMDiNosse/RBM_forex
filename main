@@ -4,23 +4,51 @@
 learning_rates=(0.01 0.1 1 10)
 ks=(1 2 3 4)
 
+# Initialize a counter for submitted jobs
+counter=0
+
+# Function to select queue based on the counter
+select_queue() {
+    local queue_number=$(($1 / 4 % 4)) # Divide by 4 and modulo by 4 to cycle through queues
+    case $queue_number in
+        0)
+            echo "q02daneel"
+            ;;
+        1)
+            echo "q07daneel"
+            ;;
+        2)
+            echo "q14daneel"
+            ;;
+        3)
+            echo "q07hal"
+            ;;
+    esac
+}
+
 # Loop over every combination of learning rate and k
 for lr in "${learning_rates[@]}"
 do
     for k in "${ks[@]}"
     do
+        # Select the queue based on the counter
+        queue=$(select_queue $counter)
+
         # Create a job script for the current combination
         job_script="run_lr${lr}_k${k}.sh"
         echo "#!/bin/bash" > $job_script
-        echo "#PBS -l select=1:ncpus=1:mem=20gb" >> $job_script
-        echo "#PBS -q q07daneel" >> $job_script
-        # Ensure you properly handle the python script arguments
-        echo "python myscript.py -e=30000 -hu=30 -t -lr=$lr -k=$k" >> $job_script
+        echo "#PBS -l select=1:ncpus=8:mem=20gb" >> $job_script
+        echo "#PBS -q $queue" >> $job_script
+        echo "python main_real.py -e=30000 -t -hu=30 -lr=$lr -k=$k" >> $job_script
 
         # Submit the job script
         qsub $job_script
+
+        # Increment the counter
+        ((counter++))
 
         # Optional: Add a short delay to prevent overwhelming the scheduler
         sleep 1
     done
 done
+
