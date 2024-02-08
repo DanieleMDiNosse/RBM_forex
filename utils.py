@@ -180,19 +180,19 @@ def calculate_correlations(dataset):
 def plot_objectives(reconstruction_error, f_energy, wasserstein_dist, id):
     fig, ax = plt.subplots(1, 3, figsize=(10, 5), tight_layout=True)
     ax[0].plot(reconstruction_error)
-    ax[0].set_xlabel("Epoch x 100")
+    ax[0].set_xlabel("Epoch x 50")
     ax[0].set_ylabel("Reconstruction error")
     ax[0].set_title("Reconstruction error")
     ax[1].plot(np.array(f_energy)[:,0], 'green', label="Training data", alpha=0.7)
     ax[1].plot(np.array(f_energy)[:,1], 'blue', label="Validation data", alpha=0.7)
     ax[1].legend()
-    ax[1].set_xlabel("Epoch x 100")
+    ax[1].set_xlabel("Epoch x 50")
     ax[1].set_ylabel("Free energy")
     ax[1].set_title("Free energy")
     ax[2].plot(wasserstein_dist)
     ax[2].set_xlabel("Epoch x 100")
-    ax[2].set_ylabel("KL divergence")
-    ax[2].set_title("Kullback-Leibler divergence")
+    ax[2].set_ylabel("W distance")
+    ax[2].set_title("Wasserstein distance")
     # Check if the output folder exists
     if not os.path.exists("output/objectives"):
         os.makedirs("output/objectives")
