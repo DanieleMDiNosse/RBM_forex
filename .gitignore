@@ -171,3 +171,6 @@ output/
 
 # sh files
 *.sh*
+
+# numpy files
+*.npy
