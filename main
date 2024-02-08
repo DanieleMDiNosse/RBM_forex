@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# Define the two lists of parameters
+learning_rates=(0.01 0.1 1 10)
+ks=(1 2 3 4)
+
+# Loop over every combination of learning rate and k
+for lr in "${learning_rates[@]}"
+do
+    for k in "${ks[@]}"
+    do
+        # Create a job script for the current combination
+        job_script="run_lr${lr}_k${k}.sh"
+        echo "#!/bin/bash" > $job_script
+        echo "#PBS -l select=1:ncpus=1:mem=20gb" >> $job_script
+        echo "#PBS -q q07daneel" >> $job_script
+        # Ensure you properly handle the python script arguments
+        echo "python myscript.py -e=30000 -hu=30 -t -lr=$lr -k=$k" >> $job_script
+
+        # Submit the job script
+        qsub $job_script
+
+        # Optional: Add a short delay to prevent overwhelming the scheduler
+        sleep 1
+    done
+done
