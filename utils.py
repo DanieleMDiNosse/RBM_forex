@@ -9,7 +9,9 @@ import seaborn as sns
 import os
 import imageio
 from natsort import natsorted
+import requests
 from scipy.stats import weibull_min, beta
+from scipy.stats import cauchy
 
 def create_animated_gif(folder_path, id, output_filename='animated.gif'):
     """
@@ -31,12 +33,27 @@ def create_animated_gif(folder_path, id, output_filename='animated.gif'):
 
     return None
 
-def data_download(currency_pairs, start_date, end_date, type='Close'):
-    data = yf.download(currency_pairs, start=start_date, end=end_date)
+def data_download(currency_pairs, start_date, end_date, type='Close', provider='alpha_vantage'):
+    if provider == 'yfinance':
+        data = yf.download(currency_pairs, start=start_date, end=end_date)
+    if provider == 'alpha_vantage':
+        time_series_data = []
+        api_key = 'Z2JPMSHJDV1V73TY'
+        for fiat1, fiat2 in currency_pairs:
+            print(fiat1, fiat2)
+            url = f'https://www.alphavantage.co/query?function=FX_DAILY&from_symbol={fiat1}&to_symbol={fiat2}&apikey={api_key}'
+            r = requests.get(url)
+            data = r.json()
+
+            # Extracting the time series data
+            time_series_data.append(data['Time Series FX (Daily)'])
+
+        print(time_series_data)
+
     return data[type]
 
 def binarize(number):
-    # Convert number to binary, remove the '0b' prefix, and pad with zeros to 16 bits
+    '''Convert number to binary, remove the '0b' prefix, and pad with zeros to 16 bits'''
     return bin(number)[2:].zfill(16)
 
 def from_real_to_binary(data):
@@ -85,8 +102,9 @@ def mixed_dataset(n_samples):
     column1 = np.concatenate([samples1, samples2])
 
     # Column 2: Simple normal distribution
-    mean, var = 10, 3  # Mean and variance
-    column2 = np.random.normal(mean, np.sqrt(var), n_samples)
+    location, scale = 0.5, 3  # Mean and variance
+    column2 = cauchy.rvs(loc=location, scale=scale, size=n_samples)
+
 
     # Column 3: Weibull distribution
     shape, scale = 1, 1.5
@@ -99,7 +117,7 @@ def mixed_dataset(n_samples):
     # Creating the DataFrame
     df = pd.DataFrame({
         "Mixed_Normal": column1,
-        "Simple_Normal": column2,
+        "Cauchy": column2,
         "Weibull": column3,
         "Beta": column4
     })
@@ -111,16 +129,13 @@ def mixed_dataset(n_samples):
 
 
 def remove_missing_values(data):
-    """Check for missing values. If there is a missing value, drop the corresponding row."""
+    """Check for missing values. If there is a missing value, the dataframe is cut from the start to the last
+    missing values rows. This is done to prevent the RBM to learn from a sequence non continuous data in time."""
     if np.isnan(data).any():
-        print("Missing values detected. Dropping rows with missing values...")
-        # collect the number of rows before dropping
-        num_rows = data.shape[0]
-        # drop rows with missing values
-        data = data[~np.isnan(data).any(axis=1)]
-        # collect the number of rows after dropping
-        num_rows_dropped = data.shape[0]
-        print(f"Done. Number of rows dropped: {num_rows - num_rows_dropped}\n")
+        last_nan_index = np.where(np.isnan(data))[0].max() + 1
+        print(f"Missing values detected. The dataframe will start from rows {last_nan_index}")
+        data = data[last_nan_index:]
+        print(f"Done.\n")
     else:
         pass
     return data
@@ -159,7 +174,30 @@ def calculate_correlations(dataset):
             'Kendall': kendall_corr
         }
 
+    correlations = pd.DataFrame(correlations, index=['Pearson', 'Spearman', 'Kendall']).T
     return correlations
+
+def plot_objectives(reconstruction_error, f_energy, wasserstein_dist, id):
+    fig, ax = plt.subplots(1, 3, figsize=(10, 5), tight_layout=True)
+    ax[0].plot(reconstruction_error)
+    ax[0].set_xlabel("Epoch x 100")
+    ax[0].set_ylabel("Reconstruction error")
+    ax[0].set_title("Reconstruction error")
+    ax[1].plot(np.array(f_energy)[:,0], 'green', label="Training data", alpha=0.7)
+    ax[1].plot(np.array(f_energy)[:,1], 'blue', label="Validation data", alpha=0.7)
+    ax[1].legend()
+    ax[1].set_xlabel("Epoch x 100")
+    ax[1].set_ylabel("Free energy")
+    ax[1].set_title("Free energy")
+    ax[2].plot(wasserstein_dist)
+    ax[2].set_xlabel("Epoch x 100")
+    ax[2].set_ylabel("KL divergence")
+    ax[2].set_title("Kullback-Leibler divergence")
+    # Check if the output folder exists
+    if not os.path.exists("output/objectives"):
+        os.makedirs("output/objectives")
+    plt.savefig(f"output/objectives/{id}_objectives.png")
+    plt.close()
 
 def compute_tail_distributions(time_series):
     """ Compute the upper and lower tail distribution functions for a time series """
@@ -229,6 +267,43 @@ def plot_distributions(generated_samples, train_data, currencies_names, id):
     plt.savefig(f"output/distributions/{id}_distributions.png")
     plt.close()
 
+def tail_conc(val1, val2):
+    f = []
+    n = len(val1)
+    linspace = np.arange(0.01, 0.5, 0.01)
+    quants1 = np.quantile(val1, linspace)
+    quants2 = np.quantile(val2, linspace)
+    for j in range(len(linspace)):
+        tot = 0
+        for i in range(len(val1)):
+            if val1[i] <= quants1[j] and val2[i] <= quants2[j]:
+                tot += 1
+        f.append(tot/(n*linspace[j]))
+    linspace = np.arange(0.5, 0.99, 0.01)
+    quants1 = np.quantile(val1, linspace)
+    quants2 = np.quantile(val2, linspace)
+    for j in range(len(linspace)):
+        tot = 0
+        for i in range(len(val1)):
+            if val1[i] >= quants1[j] and val2[i] >= quants2[j]:
+                tot += 1
+        f.append(tot/(n*(1-linspace[j])))
+    return f
+
+def plot_tail_concentration_functions(real_data, generated_data, names, id):
+    """Calculate the tail concordance of two time series"""
+    if not os.path.exists("output/tail_concentration"):
+        os.makedirs("output/tail_concentration")
+    gen_df = pd.DataFrame(generated_data, columns=names)
+    real_df = pd.DataFrame(real_data, columns=names)
+    pairs = itertools.combinations(names, 2)
+    for col1, col2 in pairs:
+        plt.figure(figsize=(11, 5), tight_layout=True)
+        plt.plot(tail_conc(real_df[col1], real_df[col2]), label='Real data')
+        plt.plot(tail_conc(gen_df[col1], gen_df[col2]), label='Generated data')
+        plt.title(f'{col1}/{col2}')
+        plt.savefig(f"output/tail_concentration/{col1}_{col2}_{id}.png")
+
 def qq_plots(generated_samples, train_data, currencies_names, id):
     """Plot the QQ plots for the generated samples and the training data"""
     n_features = generated_samples.shape[1]
@@ -238,6 +313,9 @@ def qq_plots(generated_samples, train_data, currencies_names, id):
         fig, axs = plt.subplots(2, 2, figsize=(11, 5), tight_layout=True)
         axs = axs.flatten() # Flatten the axs array for easier indexing
     else:
+        # m, M = train_data.min().min(), train_data.max().max()
+        # samples = samples[samples>min]
+        # samples = samples[samples<max]
         fig, axs = plt.subplots(1, 1, figsize=(11, 5), tight_layout=True)
         axs = [axs] # Wrap the single axs object in a list for consistent access
 
@@ -310,10 +388,25 @@ def mean_axis_0(arr):
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
+def annualized_volatility(log_returns, period=252):
+    return np.std(log_returns, axis=0) * np.sqrt(period)
+
+@njit
+def energy(v, h, weights, visible_bias, hidden_bias):
+    return -np.sum(v * visible_bias) - np.sum(h * hidden_bias) - np.sum(v @ weights * h)
+
 @njit
 def free_energy(v, weights, visible_bias, hidden_bias):
+    '''Average free energy over a batch of data represented by v. It is valid only if sites can be either 0 or 1. The general expression is:
+    F(v) = <-log(sum_h exp (-E*(v,h)))>'''
     v_float = v.astype(np.float64)
-    return np.mean(-np.sum(np.log(1 + np.exp(v_float @ weights + hidden_bias)), axis=1) - v_float @ visible_bias)
+    free_energy = np.mean(-np.sum(np.log(1 + np.exp(v_float @ weights + hidden_bias)), axis=1) - v_float @ visible_bias)
+    return free_energy
+
+# @njit
+# def free_energy(v, weights, visible_bias, hidden_bias):
+#     v_float = v.astype(np.float64)
+#     return np.mean(-np.sum(np.log(1 + np.exp(v_float @ weights + hidden_bias)), axis=1) - v_float @ visible_bias)
 
 def plot_pca_with_marginals(dataset_gen, dataset_real, id='C'):
     # Perform PCA on both datasets

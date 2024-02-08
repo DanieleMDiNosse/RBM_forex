@@ -7,6 +7,7 @@ import pandas as pd
 from rbm import *
 from utils import *
 import time
+import logging
 from scipy import stats
 import argparse
 import os
@@ -14,6 +15,8 @@ import os
 
 # Parse the arguments
 parser = argparse.ArgumentParser()
+parser.add_argument("-l", "--log", default="info",
+                        help=("Provide logging level. Example --log debug', default='info'"))
 parser.add_argument("--train_rbm", "-t", action="store_true", help="Train the RBM")
 parser.add_argument("--dataset", "-d", type=str, default="normal", help="Dataset to use. Options: normal, bi_normal, poisson, AR3, mixed")
 parser.add_argument("--num_features", "-f", type=int, default=1, help="Number of features. Default: 1")
@@ -21,13 +24,22 @@ parser.add_argument("--epochs", "-e", type=int, default=1500, help="Number of ep
 parser.add_argument("--learning_rate", "-lr", type=float, default=0.01, help="Learning rate, Default: 0.01")
 parser.add_argument("--batch_size", "-b", type=int, default=10, help="Batch size for training. Default: 10")
 parser.add_argument("--k_step", "-k", type=int, default=1, help="Number of Gibbs sampling steps in the training process. Default: 1")
+levels = {'critical': logging.CRITICAL,
+              'error': logging.ERROR,
+              'warning': logging.WARNING,
+              'info': logging.INFO,
+              'debug': logging.DEBUG}
 args = parser.parse_args()
+id = f'S{os.getpid()}'
+#Check if the output folder exists
+if not os.path.exists("logs"):
+    os.makedirs("logs")
+logging.basicConfig(filename=f'logs/main_sythetic_{id}.log', format='%(message)s', level=levels[args.log])
 
 start = time.time()
-id = f'S{os.getpid()}'
 print(f"{id} - TRAINING RBM ON SYNTHETIC DATA\n")
+np.random.seed(666)
 
-# retrive the id of the process
 # Create a synthetic normal dataset
 if args.dataset == "normal":
     print(f"Dataset: \n\tNormal distribution")
@@ -48,11 +60,6 @@ if args.dataset == "AR3":
     data = data.reshape(-1, args.num_features)
 if args.dataset == "mixed":
     data = mixed_dataset(n_samples=10000)
-    # features = data.shape[1]
-    # # Shuffle the data
-    # data = data.ravel()
-    # np.random.shuffle(data)
-    # data = data.reshape(-1, features)
 
 names = [f'Dataset {i}' for i in range(data.shape[1])]
 
@@ -79,35 +86,22 @@ if args.train_rbm:
 
     # Train the RBM
     variables_for_monitoring = [X_min, X_max, names]
-    reconstruction_error, f_energy, weights, hidden_bias, visible_bias = train(
-        train_data, val,  weights, hidden_bias, visible_bias, num_epochs=args.epochs, batch_size=args.batch_size, learning_rate=args.learning_rate, k=args.k_step, monitoring=True,id=id, var_mon=variables_for_monitoring)
+    reconstruction_error, f_energy, wasserstein_dist, weights, hidden_bias, visible_bias = train(
+        train_data, val, weights, hidden_bias, visible_bias, num_epochs=args.epochs, batch_size=args.batch_size, learning_rate=args.learning_rate, k=args.k_step, monitoring=True,id=id, var_mon=variables_for_monitoring)
     np.save("output/weights.npy", weights)
     np.save("output/hidden_bias.npy", hidden_bias)
     np.save("output/visible_bias.npy", visible_bias)
     print(f"Final weights:\n\t{weights}")
     print(f"Final hidden bias:\n\t{hidden_bias}")
     print(f"Final visible bias:\n\t{visible_bias}")
-
-    fig, ax = plt.subplots(1, 2, figsize=(11, 5), tight_layout=True)
-    ax[0].plot(reconstruction_error)
-    ax[0].set_xlabel("Epoch")
-    ax[0].set_ylabel("Reconstruction error")
-    ax[0].set_title("Reconstruction error")
-    ax[1].plot(np.array(f_energy)[:,0], 'green', label="Training data", alpha=0.7)
-    ax[1].plot(np.array(f_energy)[:,1], 'blue', label="Validation data", alpha=0.7)
-    ax[1].legend()
-    ax[1].set_xlabel("Epoch")
-    ax[1].set_ylabel("Free energy")
-    ax[1].set_title("Free energy")
-    # Check if the output folder exists
-    if not os.path.exists("output/rec_fenergy"):
-        os.makedirs("output/rec_fenergy")
-    plt.savefig(f"output/rec_fenergy/{id}_rec_fenergy.png")
 else:
     print("Loading weights...")
     weights = np.load("output/weights.npy")
     hidden_bias = np.load("output/hidden_bias.npy")
     visible_bias = np.load("output/visible_bias.npy")
+
+# Plot the objectives
+plot_objectives(reconstruction_error, f_energy, wasserstein_dist, id)
 
 # Sample from the RBM
 print("Sampling from the RBM...")
@@ -124,18 +118,14 @@ print(f"Total time: {total_time} seconds")
 
 # Compute correlations on generated data
 print("Computing correlations...")
-print('Generated')
-correlations = calculate_correlations(pd.DataFrame(samples))
-for key, value in correlations.items():
-    print(f"Pais: {key}, Value: {value}")
-
+gen_correlations = calculate_correlations(pd.DataFrame(samples))
 # Compute correlations on original data
-correlations = calculate_correlations(pd.DataFrame(data))
-print('Original')
-for key, value in correlations.items():
-    print(f"Pais: {key}, Value: {value}")
-print(f"Done\n")
+original_correlations = calculate_correlations(pd.DataFrame(train_data))
 
+print(f"Original correlations:\n{original_correlations}")
+print(f"Generated correlations:\n{gen_correlations}")
+
+print("Plotting results...")
 train_data = data[:train_data.shape[0]].reshape(samples.shape)
 
 # Plot the original and generated distributions
@@ -144,8 +134,14 @@ plot_distributions(samples, train_data, names, id)
 # Generate QQ plot data
 qq_plots(samples, train_data, names, id)
 
+# Plot the concentration functions
+plot_tail_concentration_functions(train_data, samples, names, id)
+
 # Plot upper and lower tail distribution functions
-plot_tail_distributions(samples, train_data, names, id)
+# plot_tail_distributions(samples, train_data, names, id)
+
+# Plot the tail concentration functions
+dict_f_conc = plot_tail_concentration_functions(pd.DataFrame(samples), pd.DataFrame(train_data), id)
 
 if samples.shape[1] > 2:
     # Plot PCA components with marginals

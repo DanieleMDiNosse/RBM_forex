@@ -3,33 +3,45 @@ import yfinance as yf
 import matplotlib.pyplot as plt
 # plt.style.use('seaborn')
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
 import pandas as pd
 from rbm import *
 from utils import *
 import time
+import logging
 import argparse
 import os
 
 
 # Parse the arguments
 parser = argparse.ArgumentParser()
+parser.add_argument("-l", "--log", default="info",
+                        help=("Provide logging level. Example --log debug', default='info'"))
 parser.add_argument("--train_rbm", "-t", action="store_true", help="Train the RBM. Default: False")
+parser.add_argument("--hidden_units", "-hu", type=int, help="Train the RBM. Default: 30")
 parser.add_argument("--epochs", "-e", type=int, default=1500, help="Number of epochs. Default: 1500")
 parser.add_argument("--learning_rate", "-lr", type=float, default=0.01, help="Learning rate. Default: 0.01")
 parser.add_argument("--batch_size", "-b", type=int, default=10, help="Batch size for training. Default: 10")
 parser.add_argument("--continue_train", "-c", action="store_true", help="Load the weights and continue training for the specified number of epochs. Default: False")
 parser.add_argument("--k_step", "-k", type=int, default=1, help="Number of Gibbs sampling steps in the training process. Default: 1")
+levels = {'critical': logging.CRITICAL,
+              'error': logging.ERROR,
+              'warning': logging.WARNING,
+              'info': logging.INFO,
+              'debug': logging.DEBUG}
 args = parser.parse_args()
+id = f'C{os.getpid()}'
+if not os.path.exists("logs"):
+    os.makedirs("logs")
+# logging.basicConfig(filename=f'logs/main_real_{id}.log', format='%(message)s', level=levels[args.log])
 
 
 start = time.time()
 # Define the currency pairs
 currency_pairs = ['EURUSD=X', 'GBPUSD=X', 'USDJPY=X', 'USDCAD=X']
+# currency_pairs =  [("EUR", "USD"), ("GBP", "USD"), ("USD", "JPY"), ("USD", "CAD")]
 currencies = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCAD']
 start_date = "1999-01-01"
-end_date = "2023-01-01"
-id = f'C{os.getpid()}'
+end_date = "2024-01-01"
 print(f"{id} - TRAINING RBM ON CURRENCY DATA\n")
 np.random.seed(666)
 # Check if the data is already downloaded
@@ -39,10 +51,9 @@ try:
     data = data.values
 except FileNotFoundError:
     print("Downloading data...")
-    data = data_download(currency_pairs, start_date=start_date, end_date=end_date)
+    data = data_download(currency_pairs, start_date=start_date, end_date=end_date, provider='yfinance')
     data.to_pickle(f'data/currencies_data_{start_date}_{end_date}.pkl')
     data = data.values
-    print(f"Done\n")
 
 # Apply log transformation
 data = np.log(data)
@@ -50,9 +61,6 @@ data = np.log(data)
 data = np.diff(data, axis=0)
 # Remove missing values
 data = remove_missing_values(data)
-# Normalize data
-scaler = StandardScaler()
-data = scaler.fit_transform(data)
 
 # Convert the data to binary
 data_binary, (X_min, X_max) = from_real_to_binary(data)
@@ -69,7 +77,7 @@ print(f"Validation data shape:\n\t{val.shape}")
 if args.train_rbm:
     # Define the RBM
     num_visible = train_data.shape[1]
-    num_hidden = 30
+    num_hidden = args.hidden_units
     print(f"Number of visible units:\n\t{num_visible}")
     print(f"Number of hidden units:\n\t{num_hidden}\n")
     if args.continue_train:
@@ -85,49 +93,35 @@ if args.train_rbm:
 
     # Train the RBM
     variables_for_monitoring = [X_min, X_max, currencies]
-    reconstruction_error, f_energy, weights, hidden_bias, visible_bias = train(
+    reconstruction_error, f_energy, wasserstein_dist, weights, hidden_bias, visible_bias = train(
         train_data, val,  weights, hidden_bias, visible_bias, num_epochs=args.epochs, batch_size=args.batch_size, learning_rate=args.learning_rate, k=args.k_step, monitoring=True, id=id, var_mon=variables_for_monitoring)
     np.save("output/weights.npy", weights)
     np.save("output/hidden_bias.npy", hidden_bias)
     np.save("output/visible_bias.npy", visible_bias)
     np.save("output/reconstruction_error.npy", reconstruction_error)
     np.save("output/f_energy.npy", f_energy)
+    np.save("output/wasserstein_dist.npy", wasserstein_dist)
 
     print(f"Final weights:\n\t{weights}")
     print(f"Final hidden bias:\n\t{hidden_bias}")
     print(f"Final visible bias:\n\t{visible_bias}\n")
 
 else:
-    print("Loading weights, recontruction error and mean free energy...")
+    print("Loading weights, reconstruction error and mean free energy...")
     weights = np.load("output/weights.npy")
     hidden_bias = np.load("output/hidden_bias.npy")
     visible_bias = np.load("output/visible_bias.npy")
     reconstruction_error = np.load("output/reconstruction_error.npy")
     f_energy = np.load("output/f_energy.npy")
+    wasserstein_dist = np.load("output/wasserstein_dist.npy")
     print(f"Done\n")
 
-fig, ax = plt.subplots(1, 2, figsize=(11, 5), tight_layout=True)
-ax[0].plot(reconstruction_error)
-ax[0].set_xlabel("Epoch x 100")
-ax[0].set_ylabel("Reconstruction error")
-ax[0].set_title("Reconstruction error")
-ax[1].plot(np.array(f_energy)[:,0], 'green', label="Training data", alpha=0.7)
-ax[1].plot(np.array(f_energy)[:,1], 'blue', label="Validation data", alpha=0.7)
-ax[1].legend()
-ax[1].set_xlabel("Epoch x 100")
-ax[1].set_ylabel("Free energy")
-ax[1].set_title("Free energy")
-# Check if the output folder exists
-if not os.path.exists("output/rec_fenergy"):
-    os.makedirs("output/rec_fenergy")
-plt.savefig(f"output/rec_fenergy/{id}_rec_fenergy.png")
+# Plot the objectives
+plot_objectives(reconstruction_error, f_energy, wasserstein_dist, id)
 
 print("Sampling from the RBM...")
 samples = sample(train_data.shape[1], weights, hidden_bias, visible_bias, k=1000, n_samples=train_data.shape[0])
-print(f"Done\n")
-print("Inverse_transform method to reverse the normalization...")
-samples = scaler.inverse_transform(samples)
-data_plot = scaler.inverse_transform(data)
+
 np.save(f"output/samples_{start_date}_{end_date}_{args.epochs}_{args.learning_rate}.npy", samples)
 print(f"Done\n")
 
@@ -143,17 +137,11 @@ print(f"Total time: {total_time} seconds")
 print("Computing correlations...")
 currencies_pairs = list(itertools.combinations(currencies, 2))
 
-gen_correlations = calculate_correlations(pd.DataFrame(samples))
-original_correlations = calculate_correlations(pd.DataFrame(data[:train_data.shape[0]]))
+gen_correlations = calculate_correlations(pd.DataFrame(samples, columns=currencies))
+original_correlations = calculate_correlations(pd.DataFrame(data[:train_data.shape[0]], columns=currencies))
 
-print(f"Original correlations:")
-for pair, value in zip(currencies_pairs, original_correlations.values()):
-    print(f"Pairs: {pair}, Value: {value}")
-
-print(f"Generated correlations:")
-for pair, value in zip(currencies_pairs, gen_correlations.values()):
-    print(f"Pairs: {pair}, Value: {value}")
-print(f"Done\n")
+print(f"Original correlations:\n{original_correlations}")
+print(f"Generated correlations:\n{gen_correlations}")
 
 print("Plotting results...")
 data = data[:train_data.shape[0]].reshape(samples.shape)
@@ -162,6 +150,9 @@ plot_distributions(samples, data, currencies, id)
 
 # Generate QQ plot data
 qq_plots(samples, data, currencies, id)
+
+# Plot the concentration functions
+plot_tail_concentration_functions(data, samples, currencies, id)
 
 # Plot upper and lower tail distribution functions
 plot_tail_distributions(samples, data, currencies, id)

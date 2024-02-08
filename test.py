@@ -7,7 +7,7 @@ class TestBinaryConversion(unittest.TestCase):
     def setUp(self):
         # Generate a random dataset
         np.random.seed(0)
-        self.data = np.random.rand(10, 3)  # 10 samples, 3 features
+        self.data = np.random.normal(size=(10, 3))  # 10 samples, 3 features
 
         # Convert to binary
         self.data_binary, (self.X_min, self.X_max) = from_real_to_binary(self.data)
