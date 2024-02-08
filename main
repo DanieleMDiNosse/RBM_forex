@@ -1,5 +1,5 @@
 #!/bin/bash
-
+cd /home/ddinosse/RBM_forex
 # Define the two lists of parameters
 learning_rates=(0.01 0.1 1 10)
 ks=(1 2 3 4)
