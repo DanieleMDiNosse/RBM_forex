@@ -93,13 +93,14 @@ if args.train_rbm:
 
     # Train the RBM
     variables_for_monitoring = [X_min, X_max, currencies]
-    reconstruction_error, f_energy, wasserstein_dist, weights, hidden_bias, visible_bias = train(
+    reconstruction_error, f_energy_overfitting, f_energy_diff, wasserstein_dist, weights, hidden_bias, visible_bias = train(
         train_data, val,  weights, hidden_bias, visible_bias, num_epochs=args.epochs, batch_size=args.batch_size, learning_rate=args.learning_rate, k=args.k_step, monitoring=True, id=id, var_mon=variables_for_monitoring)
     np.save("output/weights.npy", weights)
     np.save("output/hidden_bias.npy", hidden_bias)
     np.save("output/visible_bias.npy", visible_bias)
     np.save("output/reconstruction_error.npy", reconstruction_error)
-    np.save("output/f_energy.npy", f_energy)
+    np.save("output/f_energy_overfitting.npy", f_energy_overfitting)
+    np.save("output/f_energy_diff.npy", f_energy_diff)
     np.save("output/wasserstein_dist.npy", wasserstein_dist)
 
     print(f"Final weights:\n\t{weights}")
@@ -112,12 +113,13 @@ else:
     hidden_bias = np.load("output/hidden_bias.npy")
     visible_bias = np.load("output/visible_bias.npy")
     reconstruction_error = np.load("output/reconstruction_error.npy")
-    f_energy = np.load("output/f_energy.npy")
+    f_energy_overfitting = np.load("output/f_energy_overfitting.npy")
+    f_energy_diff = np.load("output/f_energy_diff.npy")
     wasserstein_dist = np.load("output/wasserstein_dist.npy")
     print(f"Done\n")
 
 # Plot the objectives
-plot_objectives(reconstruction_error, f_energy, wasserstein_dist, id)
+plot_objectives(reconstruction_error, f_energy_overfitting, f_energy_diff, wasserstein_dist, id)
 
 print("Sampling from the RBM...")
 samples = sample(train_data.shape[1], weights, hidden_bias, visible_bias, k=1000, n_samples=train_data.shape[0])

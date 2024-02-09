@@ -177,22 +177,26 @@ def calculate_correlations(dataset):
     correlations = pd.DataFrame(correlations, index=['Pearson', 'Spearman', 'Kendall']).T
     return correlations
 
-def plot_objectives(reconstruction_error, f_energy, wasserstein_dist, id):
-    fig, ax = plt.subplots(1, 3, figsize=(10, 5), tight_layout=True)
-    ax[0].plot(reconstruction_error)
-    ax[0].set_xlabel("Epoch x 50")
-    ax[0].set_ylabel("Reconstruction error")
-    ax[0].set_title("Reconstruction error")
-    ax[1].plot(np.array(f_energy)[:,0], 'green', label="Training data", alpha=0.7)
-    ax[1].plot(np.array(f_energy)[:,1], 'blue', label="Validation data", alpha=0.7)
-    ax[1].legend()
-    ax[1].set_xlabel("Epoch x 50")
-    ax[1].set_ylabel("Free energy")
-    ax[1].set_title("Free energy")
-    ax[2].plot(wasserstein_dist)
-    ax[2].set_xlabel("Epoch x 100")
-    ax[2].set_ylabel("W distance")
-    ax[2].set_title("Wasserstein distance")
+def plot_objectives(reconstruction_error, f_energy_overfitting, f_energy_diff, wasserstein_dist, id):
+    fig, ax = plt.subplots(2, 2, figsize=(10, 5), tight_layout=True)
+    ax[0, 0].plot(reconstruction_error)
+    ax[0, 0].set_xlabel("Epoch x 50")
+    ax[0, 0].set_ylabel("Reconstruction error")
+    ax[0, 0].set_title("Reconstruction error")
+    ax[0, 1].plot(np.array(f_energy_overfitting)[:,0], 'green', label="Training data", alpha=0.7)
+    ax[0, 1].plot(np.array(f_energy_overfitting)[:,1], 'blue', label="Validation data", alpha=0.7)
+    ax[0, 1].legend()
+    ax[0, 1].set_xlabel("Epoch x 50")
+    ax[0, 1].set_ylabel("Free energy")
+    ax[0, 1].set_title("Free energy")
+    ax[1, 0].plot(wasserstein_dist)
+    ax[1, 0].set_xlabel("Epoch x 100")
+    ax[1, 0].set_ylabel("W distance")
+    ax[1, 0].set_title("Wasserstein distance")
+    ax[1, 1].plot(f_energy_diff)
+    ax[1, 1].set_xlabel("Epoch x 50")
+    ax[1, 1].set_ylabel("F(v0) - F(vk)")
+    ax[1, 1].set_title("F diffs before and after Gibbs sampling")
     # Check if the output folder exists
     if not os.path.exists("output/objectives"):
         os.makedirs("output/objectives")
@@ -363,6 +367,26 @@ def dot_product(A, B):
                 result[i, j] += A[i, k] * B[k, j]
 
     return result
+
+# @njit
+def cross_entropy_error(v0, vk):
+    """
+    Calculate the cross-entropy error between the original and reconstructed data.
+
+    Parameters:
+    - v0: NumPy array of original data.
+    - vk: NumPy array of reconstructed data after k-steps of Gibbs sampling.
+
+    Returns:
+    - Cross-entropy error as a float.
+    """
+    # Avoid division by zero and log(0) by adding a small value to vk and 1-vk
+    epsilon = 1e-10
+    vk = np.clip(vk, epsilon, 1 - epsilon)
+
+    # Calculate cross-entropy error
+    cross_entropy = -np.mean(np.sum(v0 * np.log(vk) + (1 - v0) * np.log(1 - vk), axis=1))
+    return cross_entropy
 
 @njit
 def boolean_to_int(boolean_array):

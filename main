@@ -1,8 +1,8 @@
 #!/bin/bash
-cd /home/ddinosse/RBM_forex
+
 # Define the two lists of parameters
-learning_rates=(0.01 0.1 1 10)
-ks=(1 2 3 4)
+learning_rates=(0.1 0.05 0.01 0.005)
+ks=(1 5 10 20)
 
 # Initialize a counter for submitted jobs
 counter=0
@@ -37,12 +37,12 @@ do
         # Create a job script for the current combination
         job_script="run_lr${lr}_k${k}.sh"
         echo "#!/bin/bash" > $job_script
-        echo "#PBS -l select=1:ncpus=8:mem=20gb" >> $job_script
-        echo "#PBS -q $queue" >> $job_script
-        echo "python main_real.py -e=30000 -t -hu=30 -lr=$lr -k=$k" >> $job_script
+        echo "source ~/.bashrc" >> $job_script
+	echo "conda activate dmdn" >> $job_script
+        echo "python /home/ddinosse/RBM_forex/main_real.py -e=30000 -t -hu=30 -lr=$lr -k=$k" >> $job_script
 
         # Submit the job script
-        qsub $job_script
+        qsub -l select=1:ncpus=8:mem=20gb -q $queue $job_script
 
         # Increment the counter
         ((counter++))
@@ -52,3 +52,6 @@ do
     done
 done
 
+# source ~/.bashrc
+# conda activate dmdn
+# qsub -l select=1:ncpus=8:mem=20gb -q q02daneel main_real.py
