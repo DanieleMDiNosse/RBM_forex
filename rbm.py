@@ -5,40 +5,48 @@ from utils import *
 from scipy.stats import wasserstein_distance
 from scipy.special import kl_div
 import multiprocessing as mp
+import tensorflow as tf
 np.random.seed(666)
 
-def visibile_bias_init(data_binary):
-    frequencies = np.mean(data_binary, axis=0)
-    visible_bias_t0 = np.log(frequencies / (1 - frequencies))
+def visible_bias_init(data_binary):
+    frequencies = tf.reduce_mean(data_binary, axis=0)
+    visible_bias_t0 = tf.math.log(frequencies / (1 - frequencies))
     return visible_bias_t0
 
 def initialize_rbm(data, num_visible, num_hidden):
-    np.random.seed(666) # I set the seed in the main.py file
-    weights = np.random.normal(0, 0.01, (num_visible, num_hidden))
-    hidden_bias = -np.ones(num_hidden) * 4
-    visible_bias = visibile_bias_init(data)
+    # Ensure random seed is set in a TensorFlow-compatible manner if needed
+    tf.random.set_seed(666)
+    weights = tf.random.normal(shape=(num_visible, num_hidden), mean=0.0, stddev=0.01)
+    hidden_bias = tf.fill([num_hidden], -4.0)  # Creates a tensor filled with -4.0 of shape [num_hidden]
+    visible_bias = visible_bias_init(data)
     
     return weights, hidden_bias, visible_bias
 
-@nb.njit
-def sample_hidden(visible, weights, hidden_bias):
-        '''Sample the hidden units given the visible units (positive phase). 
-        During the positive phase, the network learns from the data.
-        This is thefore the data-driven phase.'''
-        hidden_activations = dot_product(visible, weights) + hidden_bias
-        hidden_probabilities = sigmoid(hidden_activations)
-        hidden_states = boolean_to_int(hidden_probabilities > np.random.random(hidden_probabilities.shape))
-        return hidden_probabilities, hidden_states
+# def visibile_bias_init(data_binary):
+#     frequencies = np.mean(data_binary, axis=0)
+#     visible_bias_t0 = np.log(frequencies / (1 - frequencies))
+#     return visible_bias_t0
 
-@nb.njit
+# def initialize_rbm(data, num_visible, num_hidden):
+#     np.random.seed(666) # I set the seed in the main.py file
+#     weights = np.random.normal(0, 0.01, (num_visible, num_hidden))
+#     hidden_bias = -np.ones(num_hidden) * 4
+#     visible_bias = visibile_bias_init(data)
+    
+#     return weights, hidden_bias, visible_bias
+
+def sample_hidden(visible, weights, hidden_bias):
+    """Sample the hidden units given the visible units (positive phase)."""
+    hidden_activations = tf.matmul(visible, weights) + hidden_bias
+    hidden_probabilities = tf.sigmoid(hidden_activations)
+    hidden_states = tf.cast(hidden_probabilities > tf.random.uniform(tf.shape(hidden_probabilities)), tf.float32)
+    return hidden_probabilities, hidden_states
+
 def sample_visible(hidden, weights, visible_bias):
-    '''Sample the visible units given the hidden units (negative phase).
-    In this phase the network reconstructs the data. This is the recontruction-driven phase.'''
-    visible_activations = dot_product(hidden, weights.T) + visible_bias
-    if np.isnan(visible_activations).any():
-        print(f'ecco\n', visible_activations, hidden, weights.T, visible_bias)
-    visible_probabilities = sigmoid(visible_activations)
-    visible_states = boolean_to_int(visible_probabilities > np.random.random(visible_probabilities.shape))
+    """Sample the visible units given the hidden units (negative phase)."""
+    visible_activations = tf.matmul(hidden, tf.transpose(weights)) + visible_bias
+    visible_probabilities = tf.sigmoid(visible_activations)
+    visible_states = tf.cast(visible_probabilities > tf.random.uniform(tf.shape(visible_probabilities)), tf.float32)
     return visible_probabilities, visible_states
 
 # @nb.njit
@@ -74,8 +82,8 @@ def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size,
             # neg_visible_states = v0.astype(np.int64)
             # Gibbs sampling
             for _ in range(k):
-                neg_visible_prob, neg_visible_states = sample_visible(pos_hidden_states, weights, visible_bias)
-                neg_hidden_prob , neg_hidden_states = sample_hidden(neg_visible_states, weights, hidden_bias)
+                _, neg_visible_states = sample_visible(pos_hidden_states, weights, visible_bias)
+                _ , neg_hidden_states = sample_hidden(neg_visible_states, weights, hidden_bias)
 
             # neg_hidden_prob,  neg_hidden_states  = sample_hidden(neg_visible_states, weights, hidden_bias)
 
