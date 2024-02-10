@@ -63,10 +63,11 @@ data = np.diff(data, axis=0)
 data = remove_missing_values(data)
 
 # Convert the data to binary
+data = tf.convert_to_tensor(data, dtype=tf.float32)
 data_binary, (X_min, X_max) = from_real_to_binary(data)
 
 # Split the data into train and test sets
-train_data, val = train_test_split(data_binary, test_size=0.1)
+train_data, val = custom_train_test_split(data_binary, test_size=0.1)
 train_data, val = train_data[:int(train_data.shape[0]-train_data.shape[0]%args.batch_size)], val[:int(val.shape[0]-val.shape[0]%args.batch_size)]
 print(f"Data entries type:\n\t{data[np.random.randint(0, data.shape[0])].dtype}")
 print(f"Data binary entries type:\n\t{data_binary[np.random.randint(0, data_binary.shape[0])].dtype}")
@@ -119,7 +120,11 @@ else:
     print(f"Done\n")
 
 # Plot the objectives
-plot_objectives(reconstruction_error, f_energy_overfitting, f_energy_diff, wasserstein_dist, id)
+# plot_objectives(reconstruction_error, f_energy_overfitting, f_energy_diff, wasserstein_dist, id)
+# convert weights , hidden_bias and visible_bias from tensorflow tensors to numpy arrays
+weights = np.array(weights)
+hidden_bias = np.array(hidden_bias)
+visible_bias = np.array(visible_bias)
 
 print("Sampling from the RBM...")
 samples = sample(train_data.shape[1], weights, hidden_bias, visible_bias, k=1000, n_samples=train_data.shape[0])
@@ -129,7 +134,7 @@ print(f"Done\n")
 
 # Convert to real values
 print("Converting the samples from binary to real values...")
-samples = from_binary_to_real(samples, X_min, X_max).to_numpy()
+samples = from_binary_to_real(samples, X_min, X_max).numpy()
 print(f"Done\n")
 
 total_time = time.time() - start

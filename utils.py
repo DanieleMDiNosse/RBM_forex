@@ -12,6 +12,7 @@ from natsort import natsorted
 import requests
 from scipy.stats import weibull_min, beta
 from scipy.stats import cauchy
+import tensorflow as tf
 
 def create_animated_gif(folder_path, id, output_filename='animated.gif'):
     """
@@ -58,8 +59,7 @@ def binarize(number):
 
 def from_real_to_binary(data):
     '''Conversion of real-valued data set into binary features'''
-    if isinstance(data, pd.DataFrame):
-        data = data.values
+    data = data.numpy()
     data_binary = np.array([[0] * (16 * data.shape[1]) for _ in range(data.shape[0])])
     x_min, x_max = np.min(data, axis=0), np.max(data, axis=0)
     for n in range(data.shape[1]):
@@ -69,13 +69,15 @@ def from_real_to_binary(data):
             for bit_index, bit in enumerate(binary_string):
                 data_binary[l, n * 16 + bit_index] = int(bit)
     # convert to int32
-    data_binary = data_binary.astype(np.int32)
+    data_binary = tf.convert_to_tensor(data_binary, dtype=tf.float32)
+    x_min, x_max = tf.convert_to_tensor(x_min, dtype=tf.float32), tf.convert_to_tensor(x_max, dtype=tf.float32)
     return data_binary, [x_min, x_max]
 
 def from_binary_to_real(X_binary, X_min, X_max):
     """
     Converts a set of binary features back into real-valued data.
     """
+    X_binary = X_binary.numpy()
     N_samples = len(X_binary)
     if isinstance(X_min, float):
         N_variables = 1
@@ -87,10 +89,24 @@ def from_binary_to_real(X_binary, X_min, X_max):
         for l in range(N_samples):
             X_integer = sum(X_binary[l][n * 16 + m] * (2 ** (15 - m)) for m in range(16))
             X_real[l][n] = X_min[n] + (X_integer * (X_max[n] - X_min[n]) / 65535)
-    
-    X_real = pd.DataFrame(X_real)
 
-    return X_real
+    return tf.convert_to_tensor(X_real)
+
+def custom_train_test_split(tensor, test_size=0.1):
+    # Determine the size of the dataset and the test set
+    total_size = tensor.shape[0]
+    test_size = int(total_size * test_size)
+    
+    # Generate indices for the test set and train set
+    indices = tf.range(total_size)
+    test_indices = indices[:test_size]
+    train_indices = indices[test_size:]
+    
+    # Split the dataset
+    train = tf.gather(tensor, train_indices)
+    test = tf.gather(tensor, test_indices)
+    
+    return train, test
 
 def mixed_dataset(n_samples):
 
@@ -180,21 +196,21 @@ def calculate_correlations(dataset):
 def plot_objectives(reconstruction_error, f_energy_overfitting, f_energy_diff, wasserstein_dist, id):
     fig, ax = plt.subplots(2, 2, figsize=(10, 5), tight_layout=True)
     ax[0, 0].plot(reconstruction_error)
-    ax[0, 0].set_xlabel("Epoch x 50")
+    ax[0, 0].set_xlabel("Epoch x 5")
     ax[0, 0].set_ylabel("Reconstruction error")
     ax[0, 0].set_title("Reconstruction error")
     ax[0, 1].plot(np.array(f_energy_overfitting)[:,0], 'green', label="Training data", alpha=0.7)
     ax[0, 1].plot(np.array(f_energy_overfitting)[:,1], 'blue', label="Validation data", alpha=0.7)
     ax[0, 1].legend()
-    ax[0, 1].set_xlabel("Epoch x 50")
+    ax[0, 1].set_xlabel("Epoch x 5")
     ax[0, 1].set_ylabel("Free energy")
     ax[0, 1].set_title("Free energy")
     ax[1, 0].plot(wasserstein_dist)
-    ax[1, 0].set_xlabel("Epoch x 100")
+    ax[1, 0].set_xlabel("Epoch x 5")
     ax[1, 0].set_ylabel("W distance")
     ax[1, 0].set_title("Wasserstein distance")
     ax[1, 1].plot(f_energy_diff)
-    ax[1, 1].set_xlabel("Epoch x 50")
+    ax[1, 1].set_xlabel("Epoch x 5")
     ax[1, 1].set_ylabel("F(v0) - F(vk)")
     ax[1, 1].set_title("F diffs before and after Gibbs sampling")
     # Check if the output folder exists
@@ -345,7 +361,6 @@ def qq_plots(generated_samples, train_data, currencies_names, id):
 
 @njit
 def dot_product(A, B):
-
     try:
         # Get the shape of the matrices
         rows_A, cols_A = A.shape
@@ -415,22 +430,52 @@ def sigmoid(x):
 def annualized_volatility(log_returns, period=252):
     return np.std(log_returns, axis=0) * np.sqrt(period)
 
-@njit
+# @njit
 def energy(v, h, weights, visible_bias, hidden_bias):
     return -np.sum(v * visible_bias) - np.sum(h * hidden_bias) - np.sum(v @ weights * h)
 
-@njit
-def free_energy(v, weights, visible_bias, hidden_bias):
-    '''Average free energy over a batch of data represented by v. It is valid only if sites can be either 0 or 1. The general expression is:
-    F(v) = <-log(sum_h exp (-E*(v,h)))>'''
-    v_float = v.astype(np.float64)
-    free_energy = np.mean(-np.sum(np.log(1 + np.exp(v_float @ weights + hidden_bias)), axis=1) - v_float @ visible_bias)
-    return free_energy
 
-# @njit
-# def free_energy(v, weights, visible_bias, hidden_bias):
-#     v_float = v.astype(np.float64)
-#     return np.mean(-np.sum(np.log(1 + np.exp(v_float @ weights + hidden_bias)), axis=1) - v_float @ visible_bias)
+def free_energy(v, W, a, b):
+    """
+    Compute the free energy of a batch of data in an RBM.
+    
+    Parameters:
+    - v: A 2D tensor of shape (num_samples, num_visible_units) representing the visible units.
+    - a: A 1D tensor of shape (num_visible_units,) representing the visible biases.
+    - b: A 1D tensor of shape (num_hidden_units,) representing the hidden biases.
+    - W: A 2D tensor of shape (num_visible_units, num_hidden_units) representing the weights.
+    
+    Returns:
+    - A 1D tensor of shape (num_samples,) representing the free energy of each sample.
+    """
+    # v_float = tf.cast(v, tf.float32)
+    # First term v * a
+    first_term = tf.reduce_sum(tf.multiply(v, a), axis=1)
+    
+    # Second term - sum(log(1 + exp(b + W^T * v)))
+    second_term = tf.reduce_sum(tf.math.log(1 + tf.exp(tf.add(b, tf.matmul(v, W)))), axis=1)
+    
+    # Free energy
+    F = -first_term - second_term
+    return tf.reduce_mean(F)
+
+def rbm_loss(v0, neg_visible_states, a, b, W, penalty):
+    """
+    Compute the RBM loss based on free energy differences.
+
+    Parameters:
+    - v_data: A 2D tensor with the original data.
+    - v_recon: A 2D tensor with the reconstructed data.
+    - a: A 1D tensor with the visible biases.
+    - b: A 1D tensor with the hidden biases.
+    - W: A 2D tensor with the weights.
+
+    Returns:
+    - Scalar tensor with the mean loss over the batch.
+    """
+    free_energy_data = free_energy(v0, W, a, b)
+    free_energy_recon = free_energy(neg_visible_states, W, a, b)
+    return free_energy_data - free_energy_recon + penalty
 
 def plot_pca_with_marginals(dataset_gen, dataset_real, id='C'):
     # Perform PCA on both datasets
