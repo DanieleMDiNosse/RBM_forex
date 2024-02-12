@@ -127,6 +127,39 @@ def mixed_dataset(n_samples):
 
     return df.values
 
+def plot_autocorr_wrt_K(num_visible, weights, hidden_bias, visible_bias, k_max, n_samples, X_min, X_max):
+    np.random.seed(666)
+    average_autocorrs = []
+    for k in range(1, k_max, 100):
+        print(f"K = {k}")
+        autocorr = 0
+        for i in range(1000):
+            if i%100 == 0: print(f"\t Genereting sample #{i}")
+            samples_0 = np.random.randint(low=0, high=2, size=(n_samples, num_visible))
+            for _ in range(k):  # number of Gibbs steps
+                _, samples_0 = sample_hidden(samples_0, weights, hidden_bias)
+                _, samples_0 = sample_visible(samples_0, weights, visible_bias)
+
+            samples_1 = samples_0
+            for _ in range(k):  # number of Gibbs steps
+                _, samples_1 = sample_hidden(samples_1, weights, hidden_bias)
+                _, samples_1 = sample_visible(samples_1, weights, visible_bias)
+            
+            print(f"\tConverting from binary to real EURUSD for t0 and t1...")
+            samples_0 = from_binary_to_real(samples_0, X_min, X_max).values[:, 0]
+            samples_1 = from_binary_to_real(samples_1, X_min, X_max).values[:, 0]
+            print(f"\tDone")
+
+            autocorr += np.correlate(samples_0, samples_1)
+
+        average_autocorrs.append(np.mean(autocorr/1000))
+    
+    plt.figure(figsize=(10,5), tight_layout=True)
+    plt.plot(average_autocorrs, '-o', alpha=0.7)
+    plt.savefig("output/averge_corr.png")
+    plt.close()
+
+    return average_autocorrs
 
 def remove_missing_values(data):
     """Check for missing values. If there is a missing value, the dataframe is cut from the start to the last
@@ -177,24 +210,45 @@ def calculate_correlations(dataset):
     correlations = pd.DataFrame(correlations, index=['Pearson', 'Spearman', 'Kendall']).T
     return correlations
 
-def plot_objectives(reconstruction_error, f_energy_overfitting, f_energy_diff, wasserstein_dist, id):
+def plot_correlation_heatmap(correlations_real, correlations_gen, id):
+    """
+    Plot a heatmap of the correlation coefficients for both the real and generated ones.
+
+    Parameters:
+    correlations_real (DataFrame): A pandas DataFrame with the correlation coefficients for the real data.
+    correlations_gen (DataFrame): A pandas DataFrame with the correlation coefficients for the generated data.
+    """
+    fig, ax = plt.subplots(1, 2, figsize=(12, 6), tight_layout=True)
+    sns.heatmap(correlations_real, annot=True, cmap='coolwarm', ax=ax[0])
+    ax[0].set_title('Real data')
+    sns.heatmap(correlations_gen, annot=True, cmap='coolwarm', ax=ax[1])
+    ax[1].set_title('Generated data')
+
+    # Check if the output folder exists
+    if not os.path.exists("output/correlation_heatmaps"):
+        os.makedirs("output/correlation_heatmaps")
+
+    plt.savefig(f"output/correlation_heatmaps/{id}_correlation_heatmap.png")
+    plt.close()
+
+def plot_objectives(reconstruction_error, f_energy_overfitting, f_energy_diff, diff_fenergy, id):
     fig, ax = plt.subplots(2, 2, figsize=(10, 5), tight_layout=True)
     ax[0, 0].plot(reconstruction_error)
-    ax[0, 0].set_xlabel("Epoch x 50")
+    ax[0, 0].set_xlabel("Epoch")
     ax[0, 0].set_ylabel("Reconstruction error")
     ax[0, 0].set_title("Reconstruction error")
     ax[0, 1].plot(np.array(f_energy_overfitting)[:,0], 'green', label="Training data", alpha=0.7)
     ax[0, 1].plot(np.array(f_energy_overfitting)[:,1], 'blue', label="Validation data", alpha=0.7)
     ax[0, 1].legend()
-    ax[0, 1].set_xlabel("Epoch x 50")
+    ax[0, 1].set_xlabel("Epoch")
     ax[0, 1].set_ylabel("Free energy")
     ax[0, 1].set_title("Free energy")
-    ax[1, 0].plot(wasserstein_dist)
-    ax[1, 0].set_xlabel("Epoch x 100")
-    ax[1, 0].set_ylabel("W distance")
-    ax[1, 0].set_title("Wasserstein distance")
+    ax[1, 0].plot(diff_fenergy)
+    ax[1, 0].set_xlabel("Epoch")
+    ax[1, 0].set_ylabel("|F(data) - F(val)|")
+    ax[1, 0].set_title("|F(data) - F(val)|")
     ax[1, 1].plot(f_energy_diff)
-    ax[1, 1].set_xlabel("Epoch x 50")
+    ax[1, 1].set_xlabel("Epoch")
     ax[1, 1].set_ylabel("F(v0) - F(vk)")
     ax[1, 1].set_title("F diffs before and after Gibbs sampling")
     # Check if the output folder exists
@@ -324,10 +378,8 @@ def qq_plots(generated_samples, train_data, currencies_names, id):
         axs = [axs] # Wrap the single axs object in a list for consistent access
 
     for i, title in zip(range(train_data.shape[1]), currencies_names):
-        gen_samples = np.sort(generated_samples[:, i])
-        original_data = np.sort(train_data[:, i])
-        gen_quantiles = np.percentile(gen_samples, q=np.linspace(0, 100, len(gen_samples)))
-        train_quantiles = np.percentile(original_data, q=np.linspace(0, 100, len(original_data)))
+        gen_quantiles = np.quantile(generated_samples[:, i], q=np.arange(0, 1, 0.01))
+        train_quantiles = np.quantile(train_data[:, i], q=np.arange(0, 1, 0.01))
         ax = axs[i]
         ax.scatter(gen_quantiles, train_quantiles, s=4, alpha=0.8)
         ax.plot([0, 1], [0, 1], transform=ax.transAxes, ls="--", c=".3")
