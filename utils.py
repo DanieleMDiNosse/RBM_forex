@@ -13,8 +13,6 @@ import requests
 from scipy.stats import weibull_min, beta
 from scipy.stats import cauchy
 
-# from rbm import parallel_sample
-
 def create_animated_gif(folder_path, id, output_filename='animated.gif'):
     """
     Creates an animated GIF from all the images in the specified folder.
@@ -575,4 +573,57 @@ def plot_autocorr_wrt_K(num_visible, weights, hidden_bias, visible_bias, k_max, 
     plt.close()
 
     return average_autocorrs
+
+
+def calculate_historical_volatility(df, window=90):
+    """
+    Calculates the historical volatility over a specified window.
+    df: DataFrame with columns representing different currency pairs and rows as daily returns.
+    window: Integer representing the rolling window size for volatility calculation.
+    """
+    return df.rolling(window=window).std() * np.sqrt(252)  # Annualizing volatility
+
+def assign_binary_volatility_indicator(df, window=90):
+    """
+    Assigns a binary indicator for volatility above or below the median for each currency pair.
+    df: DataFrame as described previously.
+    window: Rolling window size for volatility calculation.
+    """
+    # Calculate historical volatility
+    historical_volatility = calculate_historical_volatility(df, window)
+    
+    # Calculate long-term median volatility for each currency pair
+    median_volatility = historical_volatility.median()
+    
+    # Initialize a DataFrame to store binary indicators
+    binary_indicators = pd.DataFrame(index=df.index, columns=df.columns)
+    
+    # Assign binary indicators based on condition
+    for currency_pair in df.columns:
+        binary_indicators[currency_pair] = (historical_volatility[currency_pair] > median_volatility[currency_pair]).astype(int)
+        
+    return binary_indicators
+
+def add_vol_indicator(data, window=90):
+    '''Add the binary volatility indicator to the binary data set. The binary indicator is calculated using the historical
+    volatility of the data. The binary indicator is added after each currency pair in the data set. The binary indicator
+    is calculated using the median volatility as the threshold. If the volatility is greater than the median, the binary
+    indicator is set to 1, otherwise it is set to 0. The window parameter is used to calculate the historical volatility.
+    
+    Parameters:
+    - data: DataFrame with the binary data set.
+    - window: Integer representing the rolling window size for volatility calculation.
+    
+    Returns:
+    - DataFrame with the binary volatility indicator added to the data set.'''
+    data = pd.DataFrame(data)
+    binary_indicator = assign_binary_volatility_indicator(data, window)
+    data_binary, (_, _) = from_real_to_binary(data)
+    data_binary = pd.DataFrame(data_binary)
+
+    for col_bin, col_vol in zip(range(15, data_binary.shape[1], 16), range(binary_indicator.shape[1])):
+        # Inserting the binary_indicator column at col_bin + 1 location
+        data_binary.insert(loc=col_bin + 1, column=f'binary_{col_vol}', value=binary_indicator.iloc[:, col_vol])
+
+    return data_binary
 
