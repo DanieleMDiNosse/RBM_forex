@@ -1,9 +1,6 @@
 import numpy as np
 import numba as nb
-import time
 from utils import *
-from scipy.stats import wasserstein_distance
-from scipy.special import kl_div
 import multiprocessing as mp
 np.random.seed(666)
 
@@ -22,13 +19,15 @@ def initialize_rbm(data, num_visible, num_hidden):
 
 @nb.njit
 def sample_hidden(visible, weights, hidden_bias):
-        '''Sample the hidden units given the visible units (positive phase). 
-        During the positive phase, the network learns from the data.
-        This is thefore the data-driven phase.'''
-        hidden_activations = dot_product(visible, weights) + hidden_bias
-        hidden_probabilities = sigmoid(hidden_activations)
-        hidden_states = boolean_to_int(hidden_probabilities > np.random.random(hidden_probabilities.shape))
-        return hidden_probabilities, hidden_states
+    '''Sample the hidden units given the visible units (positive phase). 
+    During the positive phase, the network learns from the data.
+    This is thefore the data-driven phase.'''
+    hidden_activations = dot_product(visible, weights) + hidden_bias
+    if np.isnan(hidden_activations).any():
+        print(f"There NaNs in the hidden activations")
+    hidden_probabilities = sigmoid(hidden_activations)
+    hidden_states = boolean_to_int(hidden_probabilities > np.random.random(hidden_probabilities.shape))
+    return hidden_probabilities, hidden_states
 
 @nb.njit
 def sample_visible(hidden, weights, visible_bias):
@@ -36,21 +35,20 @@ def sample_visible(hidden, weights, visible_bias):
     In this phase the network reconstructs the data. This is the recontruction-driven phase.'''
     visible_activations = dot_product(hidden, weights.T) + visible_bias
     if np.isnan(visible_activations).any():
-        print(f'ecco\n', visible_activations, hidden, weights.T, visible_bias)
+        print(f"There NaNs in the visible activations")
     visible_probabilities = sigmoid(visible_activations)
     visible_states = boolean_to_int(visible_probabilities > np.random.random(visible_probabilities.shape))
     return visible_probabilities, visible_states
 
 # @nb.njit
-def train(data, data_total, val_total, weights, hidden_bias, visible_bias, num_epochs, batch_size, learning_rate, k, monitoring, id, var_mon):
-    X_min, X_max, X_min_total, X_max_total, currencies = var_mon
+def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size, learning_rate, k, monitoring, id, var_mon):
+    X_min_train, X_max_train, currencies = var_mon
     num_samples = data.shape[0]
 
     best_params = []
-    reconstructed_error = []
+    reconstruction_error = []
     f_energy_overfitting = []
     f_energy_diff = []
-    wasserstein_dist = []
     diff_fenergy = []
     counter = 0
     j = 0
@@ -64,7 +62,6 @@ def train(data, data_total, val_total, weights, hidden_bias, visible_bias, num_e
     start_idx = np.random.randint(low=0, high=num_samples-200)
     data_subset = data[start_idx: start_idx+200]
 
-    # start = time.time()
     for epoch in range(num_epochs):
         for i in range(0, num_samples, batch_size):
             v0 = data[i:i+batch_size]
@@ -76,8 +73,6 @@ def train(data, data_total, val_total, weights, hidden_bias, visible_bias, num_e
             for _ in range(k):
                 neg_visible_prob, neg_visible_states = sample_visible(pos_hidden_states, weights, visible_bias)
                 neg_hidden_prob , neg_hidden_states = sample_hidden(neg_visible_states, weights, hidden_bias)
-
-            # neg_hidden_prob,  neg_hidden_states  = sample_hidden(neg_visible_states, weights, hidden_bias)
 
             # Update weights and biases
             """In the positive statistics collection, using pos_hidden_states is closer to the mathematical 
@@ -112,14 +107,11 @@ def train(data, data_total, val_total, weights, hidden_bias, visible_bias, num_e
             visible_bias += velocity_visible_bias
 
         if monitoring:
-            # if epoch % 1  == 0:
             print(f"Epoch: {epoch}/{num_epochs}")
 
-            
-            #     print(f"\tStart monitoring overfitting...")
             # Calculate free energy for overfitting monitoring
-            start_idx = np.random.randint(low=0, high=val_total.shape[0]-200)
-            val_subset = val_total[start_idx: start_idx+200]
+            start_idx = np.random.randint(low=0, high=val.shape[0]-200)
+            val_subset = val[start_idx: start_idx+200]
             f_e_data = free_energy(data_subset, weights, visible_bias, hidden_bias)
             f_e_val = free_energy(val_subset, weights, visible_bias, hidden_bias)
             diff = f_e_data - f_e_val
@@ -129,7 +121,7 @@ def train(data, data_total, val_total, weights, hidden_bias, visible_bias, num_e
 
             # if epoch > 199:
             #     # Early stopping on diff_fenergy (monitor overfitting)
-            #     print(f"\t Start monitoring for early stopping")
+            #     if epoch == 200: print(f"\tStart monitoring for early stopping")
             #     max_diff_fenergy = np.max(diff_fenergy)
             #     if diff_fenergy[-1] > max_diff_fenergy and max_diff_fenergy > 0.1:
             #         counter += 1
@@ -148,42 +140,22 @@ def train(data, data_total, val_total, weights, hidden_bias, visible_bias, num_e
             f_e_before = free_energy(v0, weights, visible_bias, hidden_bias)
             f_e_after = free_energy(neg_visible_states, weights, visible_bias, hidden_bias)
             f_energy_diff.append(f_e_before - f_e_after)
-                
 
+            # Calculate reconstruction error
+            error = np.sum((v0 - neg_visible_states) ** 2) / batch_size
+            reconstruction_error.append(error)
 
-            if epoch % 5 == 0:
-                # Calculate reconstruction error
-                error = np.sum((v0 - neg_visible_states) ** 2) / batch_size
-                reconstructed_error.append(error)
-
-                # print(f"\tReconstruction error: {error}")
-                # print(f"\tFree energy difference: {f_e_before - f_e_after}")
-
-                # Calculate the cross-entropy
-                # cross_entropy = cross_entropy_error(v0, neg_visible_states)
-                # print(f"\tCross-entropy: {cross_entropy}\n")
-
-
-                # Plot for monitoring
-                # monitoring_plots(weights, hidden_bias, visible_bias, deltas, pos_hidden_prob, epoch, id)
-
-            if epoch % 200 == 0 and epoch != 0:
+            if epoch % 1000 == 0 and epoch != 0:
                 id_epoch = f"{id}_epoch_{epoch}"
                 print(f"{id} - Sampling from the RBM...")
-                samples = parallel_sample(data.shape[1], weights, hidden_bias, visible_bias, k=1000, n_samples=data_total.shape[0])
+                samples = parallel_sample(data.shape[1], weights, hidden_bias, visible_bias, k=1000, n_samples=data.shape[0])
                 print(f"Done\n")
 
                 # Convert to real values
                 print("Converting the samples from binary to real values...")
-                samples = from_binary_to_real(samples, X_min, X_max).to_numpy()
-                data_plot = from_binary_to_real(data_total, X_min_total, X_max_total).to_numpy()
+                samples = from_binary_to_real(samples, X_min_train, X_max_train).to_numpy()
+                data_plot = from_binary_to_real(data, X_min_train, X_max_train).to_numpy()
                 print(f"Done\n")
-
-                # # Calculate Wasserstein distance
-                # print("Calculating the Wasserstein distance...")
-                # w_dist = wasserstein_distance(data_plot.ravel(), samples.ravel())
-                # wasserstein_dist.append(w_dist)
-                # print(f"Done")
 
                 # Compute correlations
                 print("Computing correlations...")  
@@ -195,23 +167,22 @@ def train(data, data_total, val_total, weights, hidden_bias, visible_bias, num_e
                 # Plot the samples and the recontructed error
                 plot_distributions(samples, data_plot, currencies, id_epoch)
                 qq_plots(samples, data_plot, currencies, id_epoch)
-                plot_objectives(reconstructed_error, f_energy_overfitting, f_energy_diff, diff_fenergy, id_epoch)
+                plot_objectives(reconstruction_error, f_energy_overfitting, f_energy_diff, diff_fenergy, id_epoch)
+                plot_tail_concentration_functions(data_plot, samples, currencies, id_epoch)
                 print(f"Done\n")
 
-    # end = time.time()
-    # print(f"Done in {end-start} seconds\n")
-    return reconstructed_error, f_energy_overfitting, f_energy_diff, diff_fenergy, weights, hidden_bias, visible_bias
+    return reconstruction_error, f_energy_overfitting, f_energy_diff, diff_fenergy, weights, hidden_bias, visible_bias
 
 @nb.njit
-def sample(num_visible, weights, hidden_bias, visible_bias, k, n_samples):
+def sample_from_state(state, weights, hidden_bias, visible_bias, k):
     np.random.seed(666)
-    samples = np.random.randint(low=0, high=2, size=(n_samples, num_visible))
+    samples = state
     for _ in range(k):  # number of Gibbs steps
         _, samples = sample_hidden(samples, weights, hidden_bias)
         _, samples = sample_visible(samples, weights, visible_bias)
     return samples
 
-@njit
+@nb.njit
 def sample_batch(num_visible, weights, hidden_bias, visible_bias, k, batch_size):
     samples = np.random.randint(low=0, high=2, size=(batch_size, num_visible))
     for _ in range(k):  # number of Gibbs steps

@@ -13,6 +13,8 @@ import requests
 from scipy.stats import weibull_min, beta
 from scipy.stats import cauchy
 
+# from rbm import parallel_sample
+
 def create_animated_gif(folder_path, id, output_filename='animated.gif'):
     """
     Creates an animated GIF from all the images in the specified folder.
@@ -127,40 +129,6 @@ def mixed_dataset(n_samples):
 
     return df.values
 
-def plot_autocorr_wrt_K(num_visible, weights, hidden_bias, visible_bias, k_max, n_samples, X_min, X_max):
-    np.random.seed(666)
-    average_autocorrs = []
-    for k in range(1, k_max, 100):
-        print(f"K = {k}")
-        autocorr = 0
-        for i in range(1000):
-            if i%100 == 0: print(f"\t Genereting sample #{i}")
-            samples_0 = np.random.randint(low=0, high=2, size=(n_samples, num_visible))
-            for _ in range(k):  # number of Gibbs steps
-                _, samples_0 = sample_hidden(samples_0, weights, hidden_bias)
-                _, samples_0 = sample_visible(samples_0, weights, visible_bias)
-
-            samples_1 = samples_0
-            for _ in range(k):  # number of Gibbs steps
-                _, samples_1 = sample_hidden(samples_1, weights, hidden_bias)
-                _, samples_1 = sample_visible(samples_1, weights, visible_bias)
-            
-            print(f"\tConverting from binary to real EURUSD for t0 and t1...")
-            samples_0 = from_binary_to_real(samples_0, X_min, X_max).values[:, 0]
-            samples_1 = from_binary_to_real(samples_1, X_min, X_max).values[:, 0]
-            print(f"\tDone")
-
-            autocorr += np.correlate(samples_0, samples_1)
-
-        average_autocorrs.append(np.mean(autocorr/1000))
-    
-    plt.figure(figsize=(10,5), tight_layout=True)
-    plt.plot(average_autocorrs, '-o', alpha=0.7)
-    plt.savefig("output/averge_corr.png")
-    plt.close()
-
-    return average_autocorrs
-
 def remove_missing_values(data):
     """Check for missing values. If there is a missing value, the dataframe is cut from the start to the last
     missing values rows. This is done to prevent the RBM to learn from a sequence non continuous data in time."""
@@ -250,7 +218,7 @@ def plot_objectives(reconstruction_error, f_energy_overfitting, f_energy_diff, d
     ax[1, 1].plot(f_energy_diff)
     ax[1, 1].set_xlabel("Epoch")
     ax[1, 1].set_ylabel("F(v0) - F(vk)")
-    ax[1, 1].set_title("F diffs before and after Gibbs sampling")
+    ax[1, 1].set_title("F(v0) - F(vk)")
     # Check if the output folder exists
     if not os.path.exists("output/objectives"):
         os.makedirs("output/objectives")
@@ -360,6 +328,7 @@ def plot_tail_concentration_functions(real_data, generated_data, names, id):
         plt.plot(tail_conc(real_df[col1], real_df[col2]), label='Real data')
         plt.plot(tail_conc(gen_df[col1], gen_df[col2]), label='Generated data')
         plt.title(f'{col1}/{col2}')
+        plt.legend()
         plt.savefig(f"output/tail_concentration/{col1}_{col2}_{id}.png")
 
 def qq_plots(generated_samples, train_data, currencies_names, id):
@@ -371,9 +340,6 @@ def qq_plots(generated_samples, train_data, currencies_names, id):
         fig, axs = plt.subplots(2, 2, figsize=(11, 5), tight_layout=True)
         axs = axs.flatten() # Flatten the axs array for easier indexing
     else:
-        # m, M = train_data.min().min(), train_data.max().max()
-        # samples = samples[samples>min]
-        # samples = samples[samples<max]
         fig, axs = plt.subplots(1, 1, figsize=(11, 5), tight_layout=True)
         axs = [axs] # Wrap the single axs object in a list for consistent access
 
@@ -397,7 +363,6 @@ def qq_plots(generated_samples, train_data, currencies_names, id):
 
 @njit
 def dot_product(A, B):
-
     try:
         # Get the shape of the matrices
         rows_A, cols_A = A.shape
@@ -478,11 +443,6 @@ def free_energy(v, weights, visible_bias, hidden_bias):
     v_float = v.astype(np.float64)
     free_energy = np.mean(-np.sum(np.log(1 + np.exp(v_float @ weights + hidden_bias)), axis=1) - v_float @ visible_bias)
     return free_energy
-
-# @njit
-# def free_energy(v, weights, visible_bias, hidden_bias):
-#     v_float = v.astype(np.float64)
-#     return np.mean(-np.sum(np.log(1 + np.exp(v_float @ weights + hidden_bias)), axis=1) - v_float @ visible_bias)
 
 def plot_pca_with_marginals(dataset_gen, dataset_real, id='C'):
     # Perform PCA on both datasets
@@ -578,4 +538,41 @@ def monitoring_plots(weights, hidden_bias, visible_bias, deltas, pos_hidden_prob
 
 
     return None
+
+def plot_autocorr_wrt_K(num_visible, weights, hidden_bias, visible_bias, k_max, n_samples, X_min, X_max):
+    from rbm import parallel_sample, sample_from_state
+    np.random.seed(666)
+    average_autocorrs = []
+    N = 100
+    for k in range(1, k_max+1, 100):
+        print(f"K = {k}/{k_max}")
+        autocorr = 0
+        for i in range(N):
+            if i % 10 == 0 and i != 0: print(f"\t Genereting sample #{i}")
+
+            # Create the state at time 0
+            samples_0 = parallel_sample(num_visible, weights, hidden_bias, visible_bias, k, n_samples)
+            # Use the state at time zero to initialise a new gibbs sampling
+            samples_1 = sample_from_state(samples_0, weights, hidden_bias, visible_bias, k)
+            
+            # Convert bakc to real numbers
+            samples_0 = from_binary_to_real(samples_0, X_min, X_max).values[:, 0]
+            samples_1 = from_binary_to_real(samples_1, X_min, X_max).values[:, 0]
+
+            autocorr += np.correlate(samples_0, samples_1)
+
+        # Evaluate the mean correlation
+        average_autocorrs.append(np.mean(autocorr/N))
+    
+    np.save("output/average_autocorrs.npy", average_autocorrs)
+    plt.figure(figsize=(10,5), tight_layout=True)
+    plt.plot(average_autocorrs, '-o', alpha=0.7)
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel("K")
+    plt.ylabel("Average 1-day autocorrelation")
+    plt.savefig("output/averge_corr.png")
+    plt.close()
+
+    return average_autocorrs
 
