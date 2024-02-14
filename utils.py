@@ -134,7 +134,6 @@ def remove_missing_values(data):
         last_nan_index = np.where(np.isnan(data))[0].max() + 1
         print(f"Missing values detected. The dataframe will start from rows {last_nan_index}")
         data = data[last_nan_index:]
-        print(f"Done.\n")
     else:
         pass
     return data
@@ -148,8 +147,7 @@ def calculate_correlations(dataset):
     dataset (DataFrame): A pandas DataFrame with the multidimensional dataset.
 
     Returns:
-    dict: A dictionary with tuple keys representing feature pairs and values 
-          being another dictionary with the correlation coefficients.
+    correlations (DataFrame): A pandas DataFrame with the correlation coefficients.
     """
     # Initialize a dictionary to store the results
     correlations = {}
@@ -328,6 +326,7 @@ def plot_tail_concentration_functions(real_data, generated_data, names, id):
         plt.title(f'{col1}/{col2}')
         plt.legend()
         plt.savefig(f"output/tail_concentration/{col1}_{col2}_{id}.png")
+        plt.close()
 
 def qq_plots(generated_samples, train_data, currencies_names, id):
     """Plot the QQ plots for the generated samples and the training data"""
@@ -342,10 +341,10 @@ def qq_plots(generated_samples, train_data, currencies_names, id):
         axs = [axs] # Wrap the single axs object in a list for consistent access
 
     for i, title in zip(range(train_data.shape[1]), currencies_names):
-        gen_quantiles = np.quantile(generated_samples[:, i], q=np.arange(0, 1, 0.01))
-        train_quantiles = np.quantile(train_data[:, i], q=np.arange(0, 1, 0.01))
+        gen_quantiles = (np.quantile(generated_samples[:, i], q=np.arange(0, 1, 0.01)))
+        train_quantiles = (np.quantile(train_data[:, i], q=np.arange(0, 1, 0.01)))
         ax = axs[i]
-        ax.scatter(gen_quantiles, train_quantiles, s=4, alpha=0.8)
+        ax.scatter(gen_quantiles, train_quantiles, s=5, alpha=0.8)
         ax.plot([0, 1], [0, 1], transform=ax.transAxes, ls="--", c=".3")
         ax.set_xlabel("Generated samples quantiles")
         ax.set_ylabel("Training data quantiles")
@@ -537,27 +536,29 @@ def monitoring_plots(weights, hidden_bias, visible_bias, deltas, pos_hidden_prob
 
     return None
 
-def plot_autocorr_wrt_K(num_visible, weights, hidden_bias, visible_bias, k_max, n_samples, X_min, X_max):
+def plot_autocorr_wrt_K(weights, hidden_bias, visible_bias, k_max, n_samples, X_min, X_max, indexes_vol_indicators):
     from rbm import parallel_sample, sample_from_state
-    np.random.seed(666)
     average_autocorrs = []
-    N = 100
-    for k in range(1, k_max+1, 100):
+    # Set the number of autocorrelations to compute for each k
+    N = 1000
+    for k in range(1, k_max+100, 100):
         print(f"K = {k}/{k_max}")
         autocorr = 0
         for i in range(N):
-            if i % 10 == 0 and i != 0: print(f"\t Genereting sample #{i}")
+            if i % 100 == 0 and i != 0: print(f"\t Genereting sample #{i}")
 
             # Create the state at time 0
-            samples_0 = parallel_sample(num_visible, weights, hidden_bias, visible_bias, k, n_samples)
+            samples_0 = parallel_sample(weights, hidden_bias, visible_bias, k, n_samples)
+            samples_00 = np.delete(samples_0, indexes_vol_indicators, axis=1)
             # Use the state at time zero to initialise a new gibbs sampling
             samples_1 = sample_from_state(samples_0, weights, hidden_bias, visible_bias, k)
+            samples_11 = np.delete(samples_1, indexes_vol_indicators, axis=1)
             
-            # Convert bakc to real numbers
-            samples_0 = from_binary_to_real(samples_0, X_min, X_max).values[:, 0]
-            samples_1 = from_binary_to_real(samples_1, X_min, X_max).values[:, 0]
+            # Convert back to real numbers
+            samples_00 = from_binary_to_real(samples_00, X_min, X_max).values[:, 0]
+            samples_11 = from_binary_to_real(samples_11, X_min, X_max).values[:, 0]
 
-            autocorr += np.correlate(samples_0, samples_1)
+            autocorr += np.correlate(samples_00, samples_11)
 
         # Evaluate the mean correlation
         average_autocorrs.append(np.mean(autocorr/N))
@@ -583,12 +584,15 @@ def calculate_historical_volatility(df, window=90):
     """
     return df.rolling(window=window).std() * np.sqrt(252)  # Annualizing volatility
 
-def assign_binary_volatility_indicator(df, window=90):
+def compute_binary_volatility_indicator(df, window=90):
     """
     Assigns a binary indicator for volatility above or below the median for each currency pair.
     df: DataFrame as described previously.
     window: Rolling window size for volatility calculation.
     """
+    # Convert to dataframe if not already
+    df = pd.DataFrame(df)
+
     # Calculate historical volatility
     historical_volatility = calculate_historical_volatility(df, window)
     
@@ -596,34 +600,113 @@ def assign_binary_volatility_indicator(df, window=90):
     median_volatility = historical_volatility.median()
     
     # Initialize a DataFrame to store binary indicators
-    binary_indicators = pd.DataFrame(index=df.index, columns=df.columns)
+    vol_indicators = pd.DataFrame(index=df.index, columns=df.columns)
     
     # Assign binary indicators based on condition
     for currency_pair in df.columns:
-        binary_indicators[currency_pair] = (historical_volatility[currency_pair] > median_volatility[currency_pair]).astype(int)
+        vol_indicators[currency_pair] = (historical_volatility[currency_pair] > median_volatility[currency_pair]).astype(int)
         
-    return binary_indicators
+    return vol_indicators, median_volatility
 
-def add_vol_indicator(data, window=90):
+def add_vol_indicators(data_binary, vol_indicators):
     '''Add the binary volatility indicator to the binary data set. The binary indicator is calculated using the historical
     volatility of the data. The binary indicator is added after each currency pair in the data set. The binary indicator
     is calculated using the median volatility as the threshold. If the volatility is greater than the median, the binary
     indicator is set to 1, otherwise it is set to 0. The window parameter is used to calculate the historical volatility.
     
     Parameters:
-    - data: DataFrame with the binary data set.
-    - window: Integer representing the rolling window size for volatility calculation.
+    - data_binary: DataFrame with the binary data set.
+    - vol_indicators: DataFrame with the binary volatility indicators.
     
     Returns:
     - DataFrame with the binary volatility indicator added to the data set.'''
-    data = pd.DataFrame(data)
-    binary_indicator = assign_binary_volatility_indicator(data, window)
-    data_binary, (_, _) = from_real_to_binary(data)
+
     data_binary = pd.DataFrame(data_binary)
+    indexes = list(range(16, data_binary.shape[1]+1, 16))
 
-    for col_bin, col_vol in zip(range(15, data_binary.shape[1], 16), range(binary_indicator.shape[1])):
-        # Inserting the binary_indicator column at col_bin + 1 location
-        data_binary.insert(loc=col_bin + 1, column=f'binary_{col_vol}', value=binary_indicator.iloc[:, col_vol])
+    # Initialize a counter to keep track of the number of columns added
+    i = 0
+    for col_bin, col_vol in zip(indexes, range(vol_indicators.shape[1])):
+        # Inserting the vol_indicators column at col_bin location
+        data_binary.insert(loc=col_bin+i, column=f'binary_{col_vol}', value=vol_indicators.iloc[:, col_vol].reset_index(drop=True))
+        i += 1
+    indexes = [int(np.where(data_binary.columns == f'binary_{i}')[0]) for i in range(vol_indicators.shape[1])]
 
-    return data_binary
+    return data_binary.values, indexes
 
+def mean_std_statistics(train_data, weights, hidden_bias, visible_bias, currencies, X_min, X_max, indexes_vol_indicators, times=50):
+    from rbm import parallel_sample
+    # Evaluate the volatilities in the 'high' and 'low' volatility regimes. The results correspond
+    # to Table 4 in the paper.
+    # high_real_ret = train_data[np.where(vol_indicators[:train_data.shape[0]] == 1)]
+    # low_real_ret = train_data[np.where(vol_indicators[:train_data.shape[0]] == 0)]
+    # high_real_vol = calculate_historical_volatility(high_real_ret, window=high_real_ret.shape[0])
+    # low_real_vol = calculate_historical_volatility(low_real_ret, window=low_real_ret.shape[0])
+
+    # high_gen_ret = samples[np.where(vol_indicators[:train_data.shape[0]] == 1)]
+    # low_gen_ret = samples[np.where(vol_indicators[:train_data.shape[0]] == 0)]
+    # high_gen_vol = calculate_historical_volatility(high_gen_ret, window=high_gen_ret.shape[0])
+    # low_gen_vol = calculate_historical_volatility(low_gen_ret, window=low_gen_ret.shape[0])
+    # Remove the binary volatility indicators from the data set
+    train_data = np.delete(train_data, indexes_vol_indicators, axis=1)
+    # Generate all unique pairs of features
+    '''In Python, itertools.combinations returns an iterator that generates combinations of the input iterable. 
+    Once you iterate over all the elements of an iterator, it becomes exhausted. This means if you try to iterate
+    over it again, it won't yield any elements.
+    To solve this, you can convert the iterator to a list, which will store all the combinations in memory.'''
+    pairs = list(itertools.combinations(currencies, 2))
+
+    samples_list = []
+    print("Starting the sampling process..")
+    for i in range(times):
+        print(f"{i}/{times}")
+        samples = parallel_sample(weights, hidden_bias, visible_bias, k=1000, n_samples=1000)
+        samples = np.delete(samples, indexes_vol_indicators, axis=1)
+        samples = from_binary_to_real(samples, X_min, X_max).values
+        samples_list.append(samples)
+
+    gen_corr_list = []
+    for idx, samples in enumerate(samples_list):
+        gen_corr = calculate_correlations(pd.DataFrame(samples))
+        gen_corr_list.append(gen_corr)
+    
+    # Collect all the standard deviations for all the pairs
+    pearson_std = [np.std([gen_corr['Pearson'].iloc[i] for gen_corr in gen_corr_list]) for i in range(6)]
+    spearman_std = [np.std([gen_corr['Spearman'].iloc[i] for gen_corr in gen_corr_list]) for i in range(6)]
+    kendall_std = [np.std([gen_corr['Kendall'].iloc[i] for gen_corr in gen_corr_list]) for i in range(6)]
+
+    # Collect all the means for all the pairs
+    pearson_mean = [np.mean([gen_corr['Pearson'].iloc[i] for gen_corr in gen_corr_list]) for i in range(6)]
+    spearman_mean = [np.mean([gen_corr['Spearman'].iloc[i] for gen_corr in gen_corr_list]) for i in range(6)]
+    kendall_mean = [np.mean([gen_corr['Kendall'].iloc[i] for gen_corr in gen_corr_list]) for i in range(6)]
+
+    # Create a dictionary that contains keys and values like pairs[0]: [mean, std]
+    pearson_dict = {pair: [pearson_mean[i], pearson_std[i]] for i, pair in enumerate(pairs)}
+    spearman_dict = {pair: [spearman_mean[i], spearman_std[i]] for i, pair in enumerate(pairs)}
+    kendall_dict = {pair: [kendall_mean[i], kendall_std[i]] for i, pair in enumerate(pairs)}
+
+    # Convert to pandas DataFrame
+    pearson_df = pd.DataFrame(pearson_dict, index=['Mean', 'Std']).T
+    spearman_df = pd.DataFrame(spearman_dict, index=['Mean', 'Std']).T
+    kendall_df = pd.DataFrame(kendall_dict, index=['Mean', 'Std']).T
+
+    first_gen_percentile = {}
+    last_gen_percentile = {}
+    first_real_percentile = {}
+    last_real_percentile = {}
+    for i in range(len(currencies)):
+        gen_percentiles = [np.quantile(samples[:, i], q=np.arange(0, 1, 0.01)) for samples in samples_list]
+        first_percentiles = [perc[0] for perc in gen_percentiles]
+        last_percentiles = [perc[-1] for perc in gen_percentiles]
+        first_gen_percentile[currencies[i]] = [np.mean(first_percentiles), np.std(first_percentiles)]
+        last_gen_percentile[currencies[i]] = [np.mean(last_percentiles), np.std(last_percentiles)]
+        real_percentiles = np.quantile(train_data[:, i], q=np.arange(0, 1, 0.01))
+        first_real_percentile[currencies[i]] = real_percentiles[0]
+        last_real_percentile[currencies[i]] = real_percentiles[-1]
+
+    first_last_gen = pd.DataFrame({'First percentile': first_gen_percentile, 'Last percentile': last_gen_percentile})
+    first_last_real = pd.DataFrame({'First percentile': first_real_percentile, 'Last percentile': last_real_percentile})
+
+    # vol_indicators = 
+
+    return pearson_df, spearman_df, kendall_df, first_last_gen, first_last_real

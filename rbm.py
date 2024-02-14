@@ -2,7 +2,6 @@ import numpy as np
 import numba as nb
 from utils import *
 import multiprocessing as mp
-np.random.seed(666)
 
 def visibile_bias_init(data_binary):
     frequencies = np.mean(data_binary, axis=0)
@@ -41,8 +40,8 @@ def sample_visible(hidden, weights, visible_bias):
     return visible_probabilities, visible_states
 
 # @nb.njit
-def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size, learning_rate, k, monitoring, id, var_mon):
-    X_min_train, X_max_train, currencies = var_mon
+def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size, learning_rate, k, monitoring, id, additional_quantities):
+    X_min_train, X_max_train, indexes_vol_indicator, currencies = additional_quantities
     num_samples = data.shape[0]
 
     best_params = []
@@ -63,16 +62,22 @@ def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size,
     data_subset = data[start_idx: start_idx+200]
 
     for epoch in range(num_epochs):
+        if epoch % 100 == 0: print(f"Epoch: {epoch}/{num_epochs}")
         for i in range(0, num_samples, batch_size):
             v0 = data[i:i+batch_size]
+
+            # Select all the volatility indicators
+            vol_indicator = np.array([v0[:, i] for i in indexes_vol_indicator]).T
+
             # Positive phase
-            pos_hidden_prob, pos_hidden_states = sample_hidden(v0, weights, hidden_bias)
+            _, pos_hidden_states = sample_hidden(v0, weights, hidden_bias)
 
             # neg_visible_states = v0.astype(np.int64)
             # Gibbs sampling
             for _ in range(k):
-                neg_visible_prob, neg_visible_states = sample_visible(pos_hidden_states, weights, visible_bias)
-                neg_hidden_prob , neg_hidden_states = sample_hidden(neg_visible_states, weights, hidden_bias)
+                _, neg_visible_states = sample_visible(pos_hidden_states, weights, visible_bias)
+                neg_visible_states[:, indexes_vol_indicator] = vol_indicator
+                _ , neg_hidden_states = sample_hidden(neg_visible_states, weights, hidden_bias)
 
             # Update weights and biases
             """In the positive statistics collection, using pos_hidden_states is closer to the mathematical 
@@ -107,8 +112,6 @@ def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size,
             visible_bias += velocity_visible_bias
 
         if monitoring:
-            print(f"Epoch: {epoch}/{num_epochs}")
-
             # Calculate free energy for overfitting monitoring
             start_idx = np.random.randint(low=0, high=val.shape[0]-200)
             val_subset = val[start_idx: start_idx+200]
@@ -148,13 +151,16 @@ def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size,
             if epoch % 1000 == 0 and epoch != 0:
                 id_epoch = f"{id}_epoch_{epoch}"
                 print(f"{id} - Sampling from the RBM...")
-                samples = parallel_sample(data.shape[1], weights, hidden_bias, visible_bias, k=1000, n_samples=data.shape[0])
+                samples = parallel_sample(weights, hidden_bias, visible_bias, k=1000, n_samples=data.shape[0])
                 print(f"Done\n")
 
                 # Convert to real values
                 print("Converting the samples from binary to real values...")
+                # Remove the volatility indicators
+                samples = np.delete(samples, indexes_vol_indicator, axis=1)
+                data_plot = np.delete(data, indexes_vol_indicator, axis=1)
                 samples = from_binary_to_real(samples, X_min_train, X_max_train).to_numpy()
-                data_plot = from_binary_to_real(data, X_min_train, X_max_train).to_numpy()
+                data_plot = from_binary_to_real(data_plot, X_min_train, X_max_train).to_numpy()
                 print(f"Done\n")
 
                 # Compute correlations
@@ -175,7 +181,7 @@ def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size,
 
 @nb.njit
 def sample_from_state(state, weights, hidden_bias, visible_bias, k):
-    np.random.seed(666)
+    # np.random.seed(666)
     samples = state
     for _ in range(k):  # number of Gibbs steps
         _, samples = sample_hidden(samples, weights, hidden_bias)
@@ -183,15 +189,15 @@ def sample_from_state(state, weights, hidden_bias, visible_bias, k):
     return samples
 
 @nb.njit
-def sample_batch(num_visible, weights, hidden_bias, visible_bias, k, batch_size):
-    samples = np.random.randint(low=0, high=2, size=(batch_size, num_visible))
+def sample_batch(weights, hidden_bias, visible_bias, k, batch_size):
+    samples = np.random.randint(low=0, high=2, size=(batch_size, weights.shape[0]))
     for _ in range(k):  # number of Gibbs steps
         _, samples = sample_hidden(samples, weights, hidden_bias)
         _, samples = sample_visible(samples, weights, visible_bias)
     return samples
 
-def parallel_sample(num_visible, weights, hidden_bias, visible_bias, k, n_samples):
-    np.random.seed(666)
+def parallel_sample(weights, hidden_bias, visible_bias, k, n_samples):
+    # np.random.seed(666)
     n_processors = 8
     pool = mp.Pool(processes=n_processors)
     
@@ -200,7 +206,7 @@ def parallel_sample(num_visible, weights, hidden_bias, visible_bias, k, n_sample
     batch_sizes[-1] += n_samples % n_processors
     
     # Create a list of arguments for each batch
-    args = [(num_visible, weights, hidden_bias, visible_bias, k, batch_size) for _, batch_size in zip(range(n_processors), batch_sizes)]
+    args = [(weights, hidden_bias, visible_bias, k, batch_size) for _, batch_size in zip(range(n_processors), batch_sizes)]
     
     # Execute the function in parallel
     results = pool.starmap(sample_batch, args)
@@ -213,5 +219,6 @@ def parallel_sample(num_visible, weights, hidden_bias, visible_bias, k, n_sample
     samples = np.vstack(results)
     return samples
 
-
+# TO DO
+# 1. Evaluate low and high volatility regimes
 
