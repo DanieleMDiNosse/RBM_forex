@@ -88,16 +88,18 @@ def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size,
 
             lr = learning_rate / batch_size
 
-            penalty = np.sum(weights.ravel()) * 0.001
+            penalty = np.sum(weights.ravel()) * 0.01
 
             delta_w = lr * ((positive_associations - negative_associations) - penalty)
             delta_hidden_bias = lr * mean_axis_0(pos_hidden_states - neg_hidden_states)
             delta_visible_bias = lr * mean_axis_0(v0 - neg_visible_states)
 
             # Apply momentum
-            if epoch < 100:
+            if epoch < 1000:
                 momentum = 0.5
             else:
+                if epoch == 1000:
+                    print(f"Changing momentum to 0.9 from 0.5")
                 momentum = 0.9
 
             velocity_w = momentum * velocity_w + delta_w

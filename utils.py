@@ -154,7 +154,7 @@ def calculate_correlations(dataset):
 
     # Generate all unique pairs of features
     features = dataset.columns
-    pairs = itertools.combinations(features, 2)
+    pairs = list(itertools.combinations(features, 2))
 
     for pair in pairs:
         x, y = pair
@@ -648,7 +648,6 @@ def mean_std_statistics(train_data, weights, hidden_bias, visible_bias, currenci
     # high_gen_vol = calculate_historical_volatility(high_gen_ret, window=high_gen_ret.shape[0])
     # low_gen_vol = calculate_historical_volatility(low_gen_ret, window=low_gen_ret.shape[0])
     # Remove the binary volatility indicators from the data set
-    train_data = np.delete(train_data, indexes_vol_indicators, axis=1)
     # Generate all unique pairs of features
     '''In Python, itertools.combinations returns an iterator that generates combinations of the input iterable. 
     Once you iterate over all the elements of an iterator, it becomes exhausted. This means if you try to iterate
