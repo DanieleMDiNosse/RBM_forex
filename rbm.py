@@ -106,8 +106,8 @@ def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size,
             hidden_bias += velocity_hidden_bias
             visible_bias += velocity_visible_bias
 
+        if epoch % 100 == 0: print(f"Epoch: {epoch}/{num_epochs}")
         if monitoring:
-            print(f"Epoch: {epoch}/{num_epochs}")
 
             # Calculate free energy for overfitting monitoring
             start_idx = np.random.randint(low=0, high=val.shape[0]-200)

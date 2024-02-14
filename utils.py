@@ -328,6 +328,7 @@ def plot_tail_concentration_functions(real_data, generated_data, names, id):
         plt.title(f'{col1}/{col2}')
         plt.legend()
         plt.savefig(f"output/tail_concentration/{col1}_{col2}_{id}.png")
+        plt.close()
 
 def qq_plots(generated_samples, train_data, currencies_names, id):
     """Plot the QQ plots for the generated samples and the training data"""
