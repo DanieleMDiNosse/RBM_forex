@@ -1,7 +1,4 @@
 import numpy as np
-import yfinance as yf
-import matplotlib.pyplot as plt
-# plt.style.use('seaborn')
 from sklearn.model_selection import train_test_split
 import pandas as pd
 from rbm import *
@@ -59,23 +56,33 @@ print(f"{id} - TRAINING RBM ON CURRENCY DATA\n")
 print(f"Pre processing data...")
 # Apply log transformation
 data = np.log(data)
+
 # Compute returns
 data = np.diff(data, axis=0)
+
 # Remove missing values
 data = remove_missing_values(data)
+
 # Compute binary indicators
 vol_indicators, median = compute_binary_volatility_indicator(data)
+
 # Split the data into train and test sets
 train_data, val = train_test_split(data, test_size=0.1)
 original_shape = train_data.shape[0]
+
 # Remove the last elements if it is not divisible by the batch size. This is done to avoid errors in the training process.
 train_data, val = train_data[:int(train_data.shape[0]-train_data.shape[0]%args.batch_size)], val[:int(val.shape[0]-val.shape[0]%args.batch_size)]
+
 # Convert train_data and val to binary
 train_data, (X_min_train, X_max_train) = from_real_to_binary(train_data)
 val_binary, (X_min_val, X_max_val) = from_real_to_binary(val)
+
 # Add volatility indicators to the binary dataframes. Be careful to add the correct volatility indicators to the correct dataframes.
-train_data, indexes_vol_indicators_train = add_vol_indicators(train_data, vol_indicators[:train_data.shape[0]])
-val_binary, indexes_vol_indicators_val = add_vol_indicators(val_binary, vol_indicators[original_shape: original_shape+val.shape[0]])
+vol_indicators_train = vol_indicators[:train_data.shape[0]]
+vol_indicators_val = vol_indicators[original_shape: original_shape+val.shape[0]]
+
+train_data, indexes_vol_indicators_train = add_vol_indicators(train_data, vol_indicators_train)
+val_binary, indexes_vol_indicators_val = add_vol_indicators(val_binary, vol_indicators_val)
 
 # Check if train_data and val_binary have missing values
 if np.isnan(train_data).any():
@@ -110,13 +117,15 @@ if args.train_rbm:
         visible_bias = np.load(f"output/visible_bias_{input}.npy")
     else:
         weights, hidden_bias, visible_bias = initialize_rbm(train_data, num_visible, num_hidden)
+
     print(f"Initial weights shape:\n\t{weights.shape}")
     print(f"Initial hidden bias:\n\t{hidden_bias}")
     print(f"Initial visible bias:\n\t{visible_bias}\n")
 
     # Train the RBM
     print(f"Start training the RBM...")
-    additional_quantities = [X_min_train, X_max_train, indexes_vol_indicators_train, currencies]
+    additional_quantities = [X_min_train, X_max_train, indexes_vol_indicators_train, vol_indicators_train, currencies]
+
     reconstruction_error, f_energy_overfitting, f_energy_diff, diff_fenergy, weights, hidden_bias, visible_bias = train(
         train_data, val_binary, weights, hidden_bias, visible_bias, num_epochs=args.epochs, batch_size=args.batch_size, 
         learning_rate=args.learning_rate, k=args.k_step, monitoring=True, id=id, additional_quantities=additional_quantities)
@@ -138,7 +147,7 @@ if args.train_rbm:
 
 else:
     print("Loading weights, reconstruction error and free energies quantites...")
-    input = input("Enter the id of the trained RBM: ")
+    input = input("Enter the id of the trained RBM (something like C_<number_<lr>_<ksteps>): ")
     weights = np.load(f"output/weights_{input}.npy")
     hidden_bias = np.load(f"output/hidden_bias_{input}.npy")
     visible_bias = np.load(f"output/visible_bias_{input}.npy")
@@ -152,7 +161,7 @@ else:
 plot_objectives(reconstruction_error, f_energy_overfitting, f_energy_diff, diff_fenergy, id)
 
 print("Sampling from the RBM...")
-samples = parallel_sample(weights, hidden_bias, visible_bias, k=1000, n_samples=train_data.shape[0])
+samples = parallel_sample(weights, hidden_bias, visible_bias, 1000, indexes_vol_indicators_train, vol_indicators_train, train_data.shape[0], n_processors=8)
 print(f"Done\n")
 
 print(f"Saving the samples")
@@ -195,7 +204,7 @@ if args.std:
     print(f"This will take a while...")
     pearson_df, spearman_df, kendall_df, first_last_gen_perc, first_last_real_perc = mean_std_statistics(
         data[:train_data.shape[0]], weights, hidden_bias, visible_bias, currencies, X_min_train, X_max_train, 
-        indexes_vol_indicators_train, times=50)
+        indexes_vol_indicators_train, vol_indicators_train, times=50)
     original_correlations = calculate_correlations(pd.DataFrame(data[:train_data.shape[0]], columns=currencies))
     print(f"Original correlations:\n{original_correlations}\n")
     print(f"Generated correlations:\n\t")
@@ -226,7 +235,9 @@ else:
 # Compute 1-day autocorrelation
 print("Computing 1-day autocorrelation wrt to K...")
 print("This will take a while. If you want you can stop the execution")
-plot_autocorr_wrt_K(weights, hidden_bias, visible_bias, k_max=1000, n_samples=1000, X_min=X_min_train, X_max=X_max_train)
+plot_autocorr_wrt_K(
+    weights, hidden_bias, visible_bias, k_max=1000, n_samples=1000, X_min=X_min_train, X_max=X_max_train, 
+    indexes_vol_indicators=indexes_vol_indicators_train, vol_indicators=vol_indicators_train)
 
 # Create the animated gifs
 print("Creating animated gifs...")

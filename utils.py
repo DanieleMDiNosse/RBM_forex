@@ -53,11 +53,33 @@ def data_download(currency_pairs, start_date, end_date, type='Close', provider='
     return data[type]
 
 def binarize(number):
-    '''Convert number to binary, remove the '0b' prefix, and pad with zeros to 16 bits'''
-    return bin(number)[2:].zfill(16)
+    '''Convert number to binary, remove the '0b' prefix, and pad with zeros to 16 bits.
+    
+    Parameters
+    -----------
+    number: int
+        The number to convert to binary.
+    
+    Returns
+    --------
+    binary_representation: str
+        The binary representation of the number, padded with zeros to 16 bits.'''
+    binary_representation = bin(number)[2:].zfill(16)
+    return binary_representation
 
 def from_real_to_binary(data):
-    '''Conversion of real-valued data set into binary features'''
+    '''Conversion of real-valued data set into binary features. Every real valued number is 
+    converted into a 16-bit binary number.
+    
+    Parameters
+    -----------
+    data: DataFrame
+        The real-valued data set of shape (n_samples, n_features).
+    
+    Returns
+    --------
+    data_binary: DataFrame
+        The binary data set fo shape (n_samples, 16 * n_features).'''
     if isinstance(data, pd.DataFrame):
         data = data.values
     data_binary = np.array([[0] * (16 * data.shape[1]) for _ in range(data.shape[0])])
@@ -75,6 +97,20 @@ def from_real_to_binary(data):
 def from_binary_to_real(X_binary, X_min, X_max):
     """
     Converts a set of binary features back into real-valued data.
+
+    Parameters
+    -----------
+    X_binary: DataFrame
+        The binary data set of shape (n_samples, 16 * n_features).
+    X_min: float or array-like
+        The minimum value for each feature (output of from_real_to_binary).
+    X_max: float or array-like
+        The maximum value for each feature (output of from_real_to_binary).
+    
+    Returns
+    --------
+    X_real: DataFrame
+        The real-valued data set of shape (n_samples, n_features).
     """
     N_samples = len(X_binary)
     if isinstance(X_min, float):
@@ -93,7 +129,18 @@ def from_binary_to_real(X_binary, X_min, X_max):
     return X_real
 
 def mixed_dataset(n_samples):
-
+    '''Create a mixed dataset with 4 columns. The first column is a mix of two normal distributions, the second column
+    is a Cauchy distribution, the third column is a Weibull distribution, and the fourth column is a Beta distribution.
+    
+    Parameters
+    -----------
+    n_samples: int
+        The number of samples to generate.
+    
+    Returns
+    --------
+    df: DataFrame
+        The mixed dataset with 4 columns.'''
     # Column 1: Mix of two normal distributions
     mean1, var1 = 0, 1  # Mean and variance for the first normal distribution
     mean2, var2 = 5, 2  # Mean and variance for the second normal distribution
@@ -101,10 +148,9 @@ def mixed_dataset(n_samples):
     samples2 = np.random.normal(mean2, np.sqrt(var2), n_samples // 2)
     column1 = np.concatenate([samples1, samples2])
 
-    # Column 2: Simple normal distribution
+    # Column 2: Cauchy distribution
     location, scale = 0.5, 3  # Mean and variance
     column2 = cauchy.rvs(loc=location, scale=scale, size=n_samples)
-
 
     # Column 3: Weibull distribution
     shape, scale = 1, 1.5
@@ -129,7 +175,17 @@ def mixed_dataset(n_samples):
 
 def remove_missing_values(data):
     """Check for missing values. If there is a missing value, the dataframe is cut from the start to the last
-    missing values rows. This is done to prevent the RBM to learn from a sequence non continuous data in time."""
+    missing values rows. This is done to prevent the RBM to learn from a sequence non continuous data in time.
+    
+    Parameters
+    -----------
+    data: DataFrame
+        The dataset to check for missing values. 
+    
+    Returns
+    --------
+    data: DataFrame
+        The dataset without missing values."""
     if np.isnan(data).any():
         last_nan_index = np.where(np.isnan(data))[0].max() + 1
         print(f"Missing values detected. The dataframe will start from rows {last_nan_index}")
@@ -143,11 +199,15 @@ def calculate_correlations(dataset):
     Calculate Pearson, Spearman, and Kendall correlation coefficients for all 
     possible pairs of features in the dataset.
 
-    Parameters:
-    dataset (DataFrame): A pandas DataFrame with the multidimensional dataset.
+    Parameters
+    -----------
+    dataset: DataFrame
+        The dataset to calculate the correlations for.
 
-    Returns:
-    correlations (DataFrame): A pandas DataFrame with the correlation coefficients.
+    Returns
+    --------
+    correlations: DataFrame
+        The correlation coefficients for all possible pairs of features.
     """
     # Initialize a dictionary to store the results
     correlations = {}
@@ -178,9 +238,16 @@ def plot_correlation_heatmap(correlations_real, correlations_gen, id):
     """
     Plot a heatmap of the correlation coefficients for both the real and generated ones.
 
-    Parameters:
-    correlations_real (DataFrame): A pandas DataFrame with the correlation coefficients for the real data.
-    correlations_gen (DataFrame): A pandas DataFrame with the correlation coefficients for the generated data.
+    Parameters
+    -----------
+    correlations_real: DataFrame
+        The correlation coefficients for the real data.
+    correlations_gen: DataFrame
+        The correlation coefficients for the generated data.
+    
+    Returns
+    --------
+    None. The heatmap is saved as a .png file.
     """
     fig, ax = plt.subplots(1, 2, figsize=(12, 6), tight_layout=True)
     sns.heatmap(correlations_real, annot=True, cmap='coolwarm', ax=ax[0])
@@ -196,7 +263,8 @@ def plot_correlation_heatmap(correlations_real, correlations_gen, id):
     plt.close()
 
 def plot_objectives(reconstruction_error, f_energy_overfitting, f_energy_diff, diff_fenergy, id):
-    fig, ax = plt.subplots(2, 2, figsize=(10, 5), tight_layout=True)
+    """Plot the objectives of the training process"""
+    _, ax = plt.subplots(2, 2, figsize=(10, 5), tight_layout=True)
     ax[0, 0].plot(reconstruction_error)
     ax[0, 0].set_xlabel("Epoch")
     ax[0, 0].set_ylabel("Reconstruction error")
@@ -536,7 +604,7 @@ def monitoring_plots(weights, hidden_bias, visible_bias, deltas, pos_hidden_prob
 
     return None
 
-def plot_autocorr_wrt_K(weights, hidden_bias, visible_bias, k_max, n_samples, X_min, X_max, indexes_vol_indicators):
+def plot_autocorr_wrt_K(weights, hidden_bias, visible_bias, k_max, n_samples, X_min, X_max, indexes_vol_indicators, vol_indicators):
     from rbm import parallel_sample, sample_from_state
     average_autocorrs = []
     # Set the number of autocorrelations to compute for each k
@@ -548,7 +616,7 @@ def plot_autocorr_wrt_K(weights, hidden_bias, visible_bias, k_max, n_samples, X_
             if i % 100 == 0 and i != 0: print(f"\t Genereting sample #{i}")
 
             # Create the state at time 0
-            samples_0 = parallel_sample(weights, hidden_bias, visible_bias, k, n_samples)
+            samples_0 = parallel_sample(weights, hidden_bias, visible_bias, k, indexes_vol_indicators, vol_indicators, n_samples, n_processors=8)
             samples_00 = np.delete(samples_0, indexes_vol_indicators, axis=1)
             # Use the state at time zero to initialise a new gibbs sampling
             samples_1 = sample_from_state(samples_0, weights, hidden_bias, visible_bias, k)
@@ -606,7 +674,7 @@ def compute_binary_volatility_indicator(df, window=90):
     for currency_pair in df.columns:
         vol_indicators[currency_pair] = (historical_volatility[currency_pair] > median_volatility[currency_pair]).astype(int)
         
-    return vol_indicators, median_volatility
+    return vol_indicators.to_numpy(), median_volatility
 
 def add_vol_indicators(data_binary, vol_indicators):
     '''Add the binary volatility indicator to the binary data set. The binary indicator is calculated using the historical
@@ -628,13 +696,13 @@ def add_vol_indicators(data_binary, vol_indicators):
     i = 0
     for col_bin, col_vol in zip(indexes, range(vol_indicators.shape[1])):
         # Inserting the vol_indicators column at col_bin location
-        data_binary.insert(loc=col_bin+i, column=f'binary_{col_vol}', value=vol_indicators.iloc[:, col_vol].reset_index(drop=True))
+        data_binary.insert(loc=col_bin+i, column=f'binary_{col_vol}', value=vol_indicators[:, col_vol])
         i += 1
     indexes = [int(np.where(data_binary.columns == f'binary_{i}')[0]) for i in range(vol_indicators.shape[1])]
 
-    return data_binary.values, indexes
+    return data_binary.values, np.array(indexes)
 
-def mean_std_statistics(train_data, weights, hidden_bias, visible_bias, currencies, X_min, X_max, indexes_vol_indicators, times=50):
+def mean_std_statistics(train_data, weights, hidden_bias, visible_bias, currencies, X_min, X_max, indexes_vol_indicators, vol_indicators, times=50):
     from rbm import parallel_sample
     # Evaluate the volatilities in the 'high' and 'low' volatility regimes. The results correspond
     # to Table 4 in the paper.
@@ -659,7 +727,7 @@ def mean_std_statistics(train_data, weights, hidden_bias, visible_bias, currenci
     print("Starting the sampling process..")
     for i in range(times):
         print(f"{i}/{times}")
-        samples = parallel_sample(weights, hidden_bias, visible_bias, k=1000, n_samples=1000)
+        samples = parallel_sample(weights, hidden_bias, visible_bias, k=1000, indexes_vol_indicators=indexes_vol_indicators, vol_indicators=vol_indicators, n_samples=train_data.shape[0], n_processors=8)
         samples = np.delete(samples, indexes_vol_indicators, axis=1)
         samples = from_binary_to_real(samples, X_min, X_max).values
         samples_list.append(samples)
