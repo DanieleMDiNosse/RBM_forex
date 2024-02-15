@@ -13,6 +13,16 @@ import requests
 from scipy.stats import weibull_min, beta
 from scipy.stats import cauchy
 
+class Colors:
+    RED = '\033[91m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    BLUE = '\033[94m'
+    MAGENTA = '\033[95m'
+    CYAN = '\033[96m'
+    WHITE = '\033[97m'
+    RESET = '\033[0m'  # Reset the color to the default
+
 def create_animated_gif(folder_path, id, output_filename='animated.gif'):
     """
     Creates an animated GIF from all the images in the specified folder.
@@ -380,17 +390,41 @@ def tail_conc(val1, val2):
         f.append(tot/(n*(1-linspace[j])))
     return f
 
-def plot_tail_concentration_functions(real_data, generated_data, names, id):
-    """Calculate the tail concordance of two time series"""
+
+def plot_tail_concentration_functions(real_data, generated_samples, names, id):
     if not os.path.exists("output/tail_concentration"):
         os.makedirs("output/tail_concentration")
-    gen_df = pd.DataFrame(generated_data, columns=names)
+    generated_samples = np.array(generated_samples)
+    
     real_df = pd.DataFrame(real_data, columns=names)
     pairs = itertools.combinations(names, 2)
+    
     for col1, col2 in pairs:
         plt.figure(figsize=(11, 5), tight_layout=True)
-        plt.plot(tail_conc(real_df[col1], real_df[col2]), label='Real data')
-        plt.plot(tail_conc(gen_df[col1], gen_df[col2]), label='Generated data')
+        # Plot for real data
+        plt.plot(tail_conc(real_df[col1], real_df[col2]), label='Real data', color='blue', alpha=0.8)
+        
+        if generated_samples.ndim > 2:
+            # Calculate and plot for generated data
+            tail_concs = []
+            for sample in generated_samples:
+                gen_df = pd.DataFrame(sample, columns=names)
+                tail_concs.append(tail_conc(gen_df[col1], gen_df[col2]))
+            
+            # Calculate mean and std of tail_conc across all generated samples
+            tail_concs = np.array(tail_concs)
+            mean_tail_conc = np.mean(tail_concs, axis=0)
+            std_tail_conc = np.std(tail_concs, axis=0)
+            alpha = 0.3
+        else:
+            gen_df = pd.DataFrame(generated_samples, columns=names)
+            mean_tail_conc = tail_conc(gen_df[col1], gen_df[col2])
+            std_tail_conc, alpha = np.zeros_like(mean_tail_conc), 0
+        
+        # Plotting
+        plt.fill_between(range(len(mean_tail_conc)), mean_tail_conc - std_tail_conc, mean_tail_conc + std_tail_conc, color='red', alpha=alpha)
+        plt.plot(mean_tail_conc, label='Generated data mean', color='red', alpha=0.8)
+        
         plt.title(f'{col1}/{col2}')
         plt.legend()
         plt.savefig(f"output/tail_concentration/{col1}_{col2}_{id}.png")
@@ -399,6 +433,7 @@ def plot_tail_concentration_functions(real_data, generated_data, names, id):
 def qq_plots(generated_samples, train_data, currencies_names, id):
     """Plot the QQ plots for the generated samples and the training data"""
     n_features = generated_samples.shape[1]
+    generated_samples = np.array(generated_samples)
     
     # Determine the layout based on the number of features
     if n_features > 1:
@@ -408,11 +443,20 @@ def qq_plots(generated_samples, train_data, currencies_names, id):
         fig, axs = plt.subplots(1, 1, figsize=(11, 5), tight_layout=True)
         axs = [axs] # Wrap the single axs object in a list for consistent access
 
+    if generated_samples.ndim > 2:
+        gen_quantiles = np.zeros((len(generated_samples), 100))
+        for i, sample in enumerate(generated_samples):
+            gen_quantiles[i] = np.quantile(sample[:, i], q=np.arange(0, 1, 0.01))
+            gen_quantiles_means = np.mean(gen_quantiles, axis=0)
+            gen_quantiles_stds = np.std(gen_quantiles, axis=0)
+    else:
+        gen_quantiles = np.quantile(generated_samples, q=np.arange(0, 1, 0.01))
+        gen_quantiles_means, gen_quantiles_stds = gen_quantiles, None
+
     for i, title in zip(range(train_data.shape[1]), currencies_names):
-        gen_quantiles = (np.quantile(generated_samples[:, i], q=np.arange(0, 1, 0.01)))
         train_quantiles = (np.quantile(train_data[:, i], q=np.arange(0, 1, 0.01)))
         ax = axs[i]
-        ax.scatter(gen_quantiles, train_quantiles, s=5, alpha=0.8)
+        ax.errorbar(gen_quantiles_means, train_quantiles, xerr=None, yerr=gen_quantiles_stds, fmt='o', alpha=0.8, markersize=5)
         ax.plot([0, 1], [0, 1], transform=ax.transAxes, ls="--", c=".3")
         ax.set_xlabel("Generated samples quantiles")
         ax.set_ylabel("Training data quantiles")
@@ -702,8 +746,7 @@ def add_vol_indicators(data_binary, vol_indicators):
 
     return data_binary.values, np.array(indexes)
 
-def mean_std_statistics(train_data, weights, hidden_bias, visible_bias, currencies, X_min, X_max, indexes_vol_indicators, vol_indicators, times=50):
-    from rbm import parallel_sample
+def mean_std_statistics(samples_list, train_data, currencies):
     # Evaluate the volatilities in the 'high' and 'low' volatility regimes. The results correspond
     # to Table 4 in the paper.
     # high_real_ret = train_data[np.where(vol_indicators[:train_data.shape[0]] == 1)]
@@ -722,15 +765,6 @@ def mean_std_statistics(train_data, weights, hidden_bias, visible_bias, currenci
     over it again, it won't yield any elements.
     To solve this, you can convert the iterator to a list, which will store all the combinations in memory.'''
     pairs = list(itertools.combinations(currencies, 2))
-
-    samples_list = []
-    print("Starting the sampling process..")
-    for i in range(times):
-        print(f"{i}/{times}")
-        samples = parallel_sample(weights, hidden_bias, visible_bias, k=1000, indexes_vol_indicators=indexes_vol_indicators, vol_indicators=vol_indicators, n_samples=train_data.shape[0], n_processors=8)
-        samples = np.delete(samples, indexes_vol_indicators, axis=1)
-        samples = from_binary_to_real(samples, X_min, X_max).values
-        samples_list.append(samples)
 
     gen_corr_list = []
     for idx, samples in enumerate(samples_list):

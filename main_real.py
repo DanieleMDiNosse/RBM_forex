@@ -147,7 +147,7 @@ if args.train_rbm:
 
 else:
     print("Loading weights, reconstruction error and free energies quantites...")
-    input = input("Enter the id of the trained RBM (something like C_<number_<lr>_<ksteps>): ")
+    input = input("Enter the id of the trained RBM (something like C<number>_<lr>_<ksteps>): ")
     weights = np.load(f"output/weights_{input}.npy")
     hidden_bias = np.load(f"output/hidden_bias_{input}.npy")
     visible_bias = np.load(f"output/visible_bias_{input}.npy")
@@ -160,8 +160,12 @@ else:
 # Plot the objectives
 plot_objectives(reconstruction_error, f_energy_overfitting, f_energy_diff, diff_fenergy, id)
 
-print("Sampling from the RBM...")
-samples = parallel_sample(weights, hidden_bias, visible_bias, 1000, indexes_vol_indicators_train, vol_indicators_train, train_data.shape[0], n_processors=8)
+num_drawing = 2
+samples = np.zeros((num_drawing, train_data.shape[0], train_data.shape[1]))
+print(f"Sampling from the RBM for {num_drawing} times...")
+for i in range(num_drawing):
+    print(f"Drawing {i+1}...")
+    samples[i] = parallel_sample(weights, hidden_bias, visible_bias, 1000, indexes_vol_indicators_train, vol_indicators_train, train_data.shape[0], n_processors=8)
 print(f"Done\n")
 
 print(f"Saving the samples")
@@ -169,20 +173,30 @@ np.save(f"output/samples_{start_date}_{end_date}_{args.epochs}_{args.learning_ra
 print(f"Done\n")
 
 # Remove the volatility indicators
-samples = np.delete(samples, indexes_vol_indicators_train, axis=1)
+print("Removing the volatility indicators from the samples...")
+samples_no_vol_indicators = np.zeros((num_drawing, train_data.shape[0], train_data.shape[1]-len(indexes_vol_indicators_train)))
+for i in range(len(samples)):
+    s = np.delete(samples[i], indexes_vol_indicators_train, axis=1)
+    samples_no_vol_indicators[i] = s
+samples = samples_no_vol_indicators
+print(f"Done\n")
 
 # Convert to real values
 print("Converting the samples from binary to real values...")
-samples = from_binary_to_real(samples, X_min_train, X_max_train).to_numpy()
+samples_real = np.zeros((num_drawing, train_data.shape[0], data.shape[1]))
+for i in range(len(samples)):
+    s = from_binary_to_real(samples[i], X_min_train, X_max_train).to_numpy()
+    samples_real[i] = s
+samples = samples_real
 print(f"Done\n")
 
 total_time = time.time() - start
 print(f"Total time: {total_time} seconds\n")
 
 print("Plotting results...")
-data = data[:train_data.shape[0]].reshape(samples.shape)
+data = data[:train_data.shape[0]].reshape(samples[0].shape)
 # Plot the samples and the recontructed error
-plot_distributions(samples, data, currencies, id)
+plot_distributions(samples[np.random.randint(0, len(samples))], data, currencies, id)
 
 # Generate QQ plot data
 qq_plots(samples, data, currencies, id)
@@ -190,54 +204,49 @@ qq_plots(samples, data, currencies, id)
 # Plot the concentration functions
 plot_tail_concentration_functions(data, samples, currencies, id)
 
-# Plot upper and lower tail distribution functions
-plot_tail_distributions(samples, data, currencies, id)
+# # Plot upper and lower tail distribution functions
+# plot_tail_distributions(samples, data, currencies, id)
 
 #Plot PCA with 2 components
-plot_pca_with_marginals(samples, data, id)
+plot_pca_with_marginals(samples[np.random.randint(0, len(samples))], data, id)
 print(f"Done\n")
 
-
 # Correlations
-if args.std:
-    print(f"Computing means and standard deviations of the correlations, historical volatilties and 1st and 99th percentiles...")
-    print(f"This will take a while...")
-    pearson_df, spearman_df, kendall_df, first_last_gen_perc, first_last_real_perc = mean_std_statistics(
-        data[:train_data.shape[0]], weights, hidden_bias, visible_bias, currencies, X_min_train, X_max_train, 
-        indexes_vol_indicators_train, vol_indicators_train, times=50)
-    original_correlations = calculate_correlations(pd.DataFrame(data[:train_data.shape[0]], columns=currencies))
-    print(f"Original correlations:\n{original_correlations}\n")
-    print(f"Generated correlations:\n\t")
-    print(f"Pearson:\n{pearson_df}\n")
-    print(f"Spearman:\n{spearman_df}\n")
-    print(f"Kendall:\n{kendall_df}\n")
-    
-    samples_df = pd.DataFrame(samples, columns=currencies)
-    data_train_df = pd.DataFrame(data[:train_data.shape[0]], columns=currencies)
-    historical_volatilities_gen = calculate_historical_volatility(samples_df, window=samples.shape[0]).iloc[-1]
-    historical_volatilities_real = calculate_historical_volatility(data_train_df, window=train_data.shape[0]).iloc[-1]
-    print(f"Real historical volatilities:\n{historical_volatilities_real}\n")
-    print(f"Generated historical volatilities:\n{historical_volatilities_gen}\n")
+print(f"Computing means and standard deviations of the correlations, historical volatilties and 1st and 99th percentiles...")
+pearson_df, spearman_df, kendall_df, first_last_gen_perc, first_last_real_perc = mean_std_statistics(samples, data, currencies)
+original_correlations = calculate_correlations(pd.DataFrame(data[:train_data.shape[0]], columns=currencies))
+print(f"{Colors.GREEN}Correlations{Colors.RESET}:")
+print(f"{Colors.MAGENTA}Real:{Colors.RESET}:\n{original_correlations}\n")
+print(f"{Colors.MAGENTA}Generated{Colors.RESET}:")
+print(f"Pearson:\n{pearson_df}\n")
+print(f"Spearman:\n{spearman_df}\n")
+print(f"Kendall:\n{kendall_df}\n")
 
-    print(f"1st and 99th percentiles of the generated and real data:")
-    print(f"Generated:\n{first_last_gen_perc}\n")
-    print(f"Real:\n{first_last_real_perc}\n")
-    print(f"Done\n")
-else:
-    print("Computing correlations...")
-    gen_correlations = calculate_correlations(pd.DataFrame(samples, columns=currencies))
-    original_correlations = calculate_correlations(pd.DataFrame(data[:train_data.shape[0]], columns=currencies))
-    plot_correlation_heatmap(original_correlations, gen_correlations, id)
-    print(f"Original correlations:\n{original_correlations}")
-    print(f"Generated correlations:\n{gen_correlations}")
-    print(f"Done\n")
 
-# Compute 1-day autocorrelation
-print("Computing 1-day autocorrelation wrt to K...")
-print("This will take a while. If you want you can stop the execution")
-plot_autocorr_wrt_K(
-    weights, hidden_bias, visible_bias, k_max=1000, n_samples=1000, X_min=X_min_train, X_max=X_max_train, 
-    indexes_vol_indicators=indexes_vol_indicators_train, vol_indicators=vol_indicators_train)
+print(f"Computing historical volatilities...")
+samples_dfs = [pd.DataFrame(sample, columns=currencies) for sample in samples]
+data_train_df = pd.DataFrame(data[:train_data.shape[0]], columns=currencies)
+historical_volatilities_gen = []
+for sample_df in samples_dfs:
+    historical_volatilities_gen.append(calculate_historical_volatility(sample_df, window=sample_df.shape[0]).iloc[-1])
+historical_volatilities_gen_mean = np.mean(np.array(historical_volatilities_gen), axis=0)
+historical_volatilities_gen_std = np.std(np.array(historical_volatilities_gen), axis=0)
+historical_volatilities_gen = pd.DataFrame({'Mean':historical_volatilities_gen_mean, 'Std':historical_volatilities_gen_std}, index=currencies)
+historical_volatilities_real = calculate_historical_volatility(data_train_df, window=train_data.shape[0]).iloc[-1]
+print(f"{Colors.GREEN}Historical volatilities{Colors.RESET}:")
+print(f"{Colors.MAGENTA}Real:{Colors.RESET}\n{historical_volatilities_real}\n")
+print(f"{Colors.MAGENTA}Generated{Colors.RESET}:\n{historical_volatilities_gen}\n")
+
+print(f"{Colors.GREEN}1st and 99th percentiles of the generated and real data{Colors.RESET}:")
+print(f"{Colors.MAGENTA}Real:{Colors.RESET}:\n{first_last_real_perc}\n")
+print(f"{Colors.MAGENTA}Generated{Colors.RESET}:\n{first_last_gen_perc}\n")
+
+# # Compute 1-day autocorrelation
+# print("Computing 1-day autocorrelation wrt to K...")
+# print("This will take a while. If you want you can stop the execution")
+# plot_autocorr_wrt_K(
+#     weights, hidden_bias, visible_bias, k_max=1000, n_samples=1000, X_min=X_min_train, X_max=X_max_train, 
+#     indexes_vol_indicators=indexes_vol_indicators_train, vol_indicators=vol_indicators_train)
 
 # Create the animated gifs
 print("Creating animated gifs...")
