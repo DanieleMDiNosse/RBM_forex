@@ -1,0 +1,44 @@
+Loading data...
+C507499_0.001_4 - TRAINING RBM ON CURRENCY DATA
+
+Pre processing data...
+Done
+
+Original data entries type:
+	float64
+Data binary entries type:
+	int64
+Training data binary shape:
+	(2590, 68)
+Validation data binary shape:
+	(280, 68)
+
+Loading weights, reconstruction error and free energies quantites...
+Done
+
+Sampling from the RBM for 2 times...
+Drawing 1...
+Drawing 2...
+Done
+
+Converting the samples from binary to real values...
+Done
+
+Plotting results...
+Computing historical volatilities...
+[92mHistorical volatilities[0m:
+[95mReal:[0m
+EURUSD    0.079747
+GBPUSD    0.092343
+USDJPY    0.073821
+USDCAD    0.089365
+Name: 2589, dtype: float64
+
+[95mGenerated[0m:
+            Mean       Std
+EURUSD  0.084879  0.000873
+GBPUSD  0.439396  0.000240
+USDJPY  0.268582  0.001306
+USDCAD  0.321890  0.001232
+
+[92m1st and 99th percentiles of the generated and real data[0m:

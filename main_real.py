@@ -40,20 +40,20 @@ start_date = "1999-01-01"
 end_date = "2024-01-01"
 # Check if the data is already downloaded
 try:
-    print("Loading data...")
+    print_("Loading data...")
     data = pd.read_pickle(f'data/currencies_data_{start_date}_{end_date}.pkl')
     data = data.values
 except FileNotFoundError:
-    print("Downloading data...")
+    print_("Downloading data...")
     data = data_download(['EURUSD=X', 'GBPUSD=X', 'USDJPY=X', 'USDCAD=X'],
                          start_date=start_date, end_date=end_date, provider='yfinance')
     data.to_pickle(f'data/currencies_data_{start_date}_{end_date}.pkl')
     data = data.values
 
 id = f'C{os.getpid()}_{args.learning_rate}_{args.k_step}'
-print(f"{id} - TRAINING RBM ON CURRENCY DATA\n")
+print_(f"{id} - TRAINING RBM ON CURRENCY DATA\n")
 
-print(f"Pre processing data...")
+print_(f"Pre processing data...")
 # Apply log transformation
 data = np.log(data)
 
@@ -86,31 +86,31 @@ val_binary, indexes_vol_indicators_val = add_vol_indicators(val_binary, vol_indi
 
 # Check if train_data and val_binary have missing values
 if np.isnan(train_data).any():
-    print(f"\nTrain data has missing values after pre processing! Control the pre processing steps.")
-    print(f"Indexes of missing values in train data:\n{np.argwhere(np.isnan(train_data))}")
+    print_(f"\nTrain data has missing values after pre processing! Control the pre processing steps.")
+    print_(f"Indexes of missing values in train data:\n{np.argwhere(np.isnan(train_data))}")
     exit()
 if np.isnan(val_binary).any():
-    print(f"\nValidation data has missing values after pre processing! Control the pre processing steps.")
-    print(f"Indexes of missing values in validation data:\n{np.argwhere(np.isnan(val_binary))}")
+    print_(f"\nValidation data has missing values after pre processing! Control the pre processing steps.")
+    print_(f"Indexes of missing values in validation data:\n{np.argwhere(np.isnan(val_binary))}")
     exit()
-print(f"Done\n")
+print_(f"Done\n")
 
-print(f"Original data entries type:\n\t{data[np.random.randint(0, data.shape[0])].dtype}")
-print(f"Data binary entries type:\n\t{train_data[np.random.randint(0, train_data.shape[0])].dtype}")
-print(f"Training data binary shape:\n\t{train_data.shape}")
-print(f"Validation data binary shape:\n\t{val_binary.shape}\n")
+print_(f"Original data entries type:\n\t{data[np.random.randint(0, data.shape[0])].dtype}")
+print_(f"Data binary entries type:\n\t{train_data[np.random.randint(0, train_data.shape[0])].dtype}")
+print_(f"Training data binary shape:\n\t{train_data.shape}")
+print_(f"Validation data binary shape:\n\t{val_binary.shape}\n")
 
 if args.train_rbm:
     # Define the RBM
     num_visible = train_data.shape[1]
     num_hidden = args.hidden_units
-    print(f"Number of visible units:\n\t{num_visible}")
-    print(f"Number of hidden units:\n\t{num_hidden}")
-    print(f"Learning rate:\n\t{args.learning_rate}")
-    print(f"Batch size:\n\t{args.batch_size}")
-    print(f"Number of gibbs sampling in CD:\n\t{args.k_step}\n")
+    print_(f"Number of visible units:\n\t{num_visible}")
+    print_(f"Number of hidden units:\n\t{num_hidden}")
+    print_(f"Learning rate:\n\t{args.learning_rate}")
+    print_(f"Batch size:\n\t{args.batch_size}")
+    print_(f"Number of gibbs sampling in CD:\n\t{args.k_step}\n")
     if args.continue_train:
-        print("Continue training from past learned RBM parameters...")
+        print_("Continue training from past learned RBM parameters...")
         input = input("Enter the id of the trained RBM: ")
         weights = np.load(f"output/weights_{input}.npy")
         hidden_bias = np.load(f"output/hidden_bias_{input}.npy")
@@ -118,20 +118,20 @@ if args.train_rbm:
     else:
         weights, hidden_bias, visible_bias = initialize_rbm(train_data, num_visible, num_hidden)
 
-    print(f"Initial weights shape:\n\t{weights.shape}")
-    print(f"Initial hidden bias:\n\t{hidden_bias}")
-    print(f"Initial visible bias:\n\t{visible_bias}\n")
+    print_(f"Initial weights shape:\n\t{weights.shape}")
+    print_(f"Initial hidden bias:\n\t{hidden_bias}")
+    print_(f"Initial visible bias:\n\t{visible_bias}\n")
 
     # Train the RBM
-    print(f"Start training the RBM...")
+    print_(f"Start training the RBM...")
     additional_quantities = [X_min_train, X_max_train, indexes_vol_indicators_train, vol_indicators_train, currencies]
 
     reconstruction_error, f_energy_overfitting, f_energy_diff, diff_fenergy, weights, hidden_bias, visible_bias = train(
         train_data, val_binary, weights, hidden_bias, visible_bias, num_epochs=args.epochs, batch_size=args.batch_size, 
         learning_rate=args.learning_rate, k=args.k_step, monitoring=True, id=id, additional_quantities=additional_quantities)
-    print(f"Done\n")
+    print_(f"Done\n")
 
-    print(f"Saving rbm parameters, reconstruction error and free energies quantites...")
+    print_(f"Saving rbm parameters, reconstruction error and free energies quantites...")
     np.save(f"output/weights_{id}.npy", weights)
     np.save(f"output/hidden_bias_{id}.npy", hidden_bias)
     np.save(f"output/visible_bias_{id}.npy", visible_bias)
@@ -139,14 +139,14 @@ if args.train_rbm:
     np.save(f"output/f_energy_overfitting_{id}.npy", f_energy_overfitting)
     np.save(f"output/f_energy_diff_{id}.npy", f_energy_diff)
     np.save(f"output/diff_fenergy_{id}.npy", diff_fenergy)
-    print(f"Done\n")
+    print_(f"Done\n")
 
-    print(f"Final weights:\n\t{weights}")
-    print(f"Final hidden bias:\n\t{hidden_bias}")
-    print(f"Final visible bias:\n\t{visible_bias}\n")
+    print_(f"Final weights:\n\t{weights}")
+    print_(f"Final hidden bias:\n\t{hidden_bias}")
+    print_(f"Final visible bias:\n\t{visible_bias}\n")
 
 else:
-    print("Loading weights, reconstruction error and free energies quantites...")
+    print_("Loading weights, reconstruction error and free energies quantites...")
     input = input("Enter the id of the trained RBM (something like C<number>_<lr>_<ksteps>): ")
     weights = np.load(f"output/weights_{input}.npy")
     hidden_bias = np.load(f"output/hidden_bias_{input}.npy")
@@ -155,105 +155,105 @@ else:
     f_energy_overfitting = np.load(f"output/f_energy_overfitting_{input}.npy")
     f_energy_diff = np.load(f"output/f_energy_diff_{input}.npy")
     diff_fenergy = np.load(f"output/diff_fenergy_{input}.npy")
-    print(f"Done\n")
+    print_(f"Done\n")
 
 # Plot the objectives
-plot_objectives(reconstruction_error, f_energy_overfitting, f_energy_diff, diff_fenergy, id)
+# plot_objectives(reconstruction_error, f_energy_overfitting, f_energy_diff, diff_fenergy, id)
 
 num_drawing = 2
 samples = np.zeros((num_drawing, train_data.shape[0], train_data.shape[1]))
-print(f"Sampling from the RBM for {num_drawing} times...")
+print_(f"Sampling from the RBM for {num_drawing} times...")
 for i in range(num_drawing):
-    print(f"Drawing {i+1}...")
+    print_(f"Drawing {i+1}...")
     samples[i] = parallel_sample(weights, hidden_bias, visible_bias, 1000, indexes_vol_indicators_train, vol_indicators_train, train_data.shape[0], n_processors=8)
-print(f"Done\n")
+print_(f"Done\n")
 
-print(f"Saving the samples")
-np.save(f"output/samples_{start_date}_{end_date}_{args.epochs}_{args.learning_rate}.npy", samples)
-print(f"Done\n")
+# print_(f"Saving the samples")
+# np.save(f"output/samples_{start_date}_{end_date}_{args.epochs}_{args.learning_rate}.npy", samples)
+# print_(f"Done\n")
 
-# Remove the volatility indicators
-print("Removing the volatility indicators from the samples...")
-samples_no_vol_indicators = np.zeros((num_drawing, train_data.shape[0], train_data.shape[1]-len(indexes_vol_indicators_train)))
-for i in range(len(samples)):
-    s = np.delete(samples[i], indexes_vol_indicators_train, axis=1)
-    samples_no_vol_indicators[i] = s
-samples = samples_no_vol_indicators
-print(f"Done\n")
+# # Remove the volatility indicators
+# print_("Removing the volatility indicators from the samples...")
+# samples_no_vol_indicators = np.zeros((num_drawing, train_data.shape[0], train_data.shape[1]-len(indexes_vol_indicators_train)))
+# for i in range(len(samples)):
+#     s = np.delete(samples[i], indexes_vol_indicators_train, axis=1)
+#     samples_no_vol_indicators[i] = s
+# samples = samples_no_vol_indicators
+# print_(f"Done\n")
 
 # Convert to real values
-print("Converting the samples from binary to real values...")
+print_("Converting the samples from binary to real values...")
 samples_real = np.zeros((num_drawing, train_data.shape[0], data.shape[1]))
 for i in range(len(samples)):
     s = from_binary_to_real(samples[i], X_min_train, X_max_train).to_numpy()
     samples_real[i] = s
 samples = samples_real
-print(f"Done\n")
+print_(f"Done\n")
 
-total_time = time.time() - start
-print(f"Total time: {total_time} seconds\n")
+# total_time = time.time() - start
+# print_(f"Total time: {total_time} seconds\n")
 
-print("Plotting results...")
+print_("Plotting results...")
 data = data[:train_data.shape[0]].reshape(samples[0].shape)
 # Plot the samples and the recontructed error
-plot_distributions(samples[np.random.randint(0, len(samples))], data, currencies, id)
+# plot_distributions(samples[np.random.randint(0, len(samples))], data, currencies, id)
 
-# Generate QQ plot data
-qq_plots(samples, data, currencies, id)
+# # Generate QQ plot data
+# qq_plots(samples, data, currencies, id)
 
-# Plot the concentration functions
-plot_tail_concentration_functions(data, samples, currencies, id)
+# # Plot the concentration functions
+# plot_tail_concentration_functions(data, samples, currencies, id)
 
-# # Plot upper and lower tail distribution functions
-# plot_tail_distributions(samples, data, currencies, id)
+# # # Plot upper and lower tail distribution functions
+# # plot_tail_distributions(samples, data, currencies, id)
 
-#Plot PCA with 2 components
-plot_pca_with_marginals(samples[np.random.randint(0, len(samples))], data, id)
-print(f"Done\n")
+# #Plot PCA with 2 components
+# plot_pca_with_marginals(samples[np.random.randint(0, len(samples))], data, id)
+# print_(f"Done\n")
 
-# Correlations
-print(f"Computing means and standard deviations of the correlations, historical volatilties and 1st and 99th percentiles...")
-pearson_df, spearman_df, kendall_df, first_last_gen_perc, first_last_real_perc = mean_std_statistics(samples, data, currencies)
-original_correlations = calculate_correlations(pd.DataFrame(data[:train_data.shape[0]], columns=currencies))
-print(f"{Colors.GREEN}Correlations{Colors.RESET}:")
-print(f"{Colors.MAGENTA}Real:{Colors.RESET}:\n{original_correlations}\n")
-print(f"{Colors.MAGENTA}Generated{Colors.RESET}:")
-print(f"Pearson:\n{pearson_df}\n")
-print(f"Spearman:\n{spearman_df}\n")
-print(f"Kendall:\n{kendall_df}\n")
+# # Correlations
+# print_(f"Computing means and standard deviations of the correlations, historical volatilties and 1st and 99th percentiles...")
+# pearson_df, spearman_df, kendall_df, first_last_gen_perc, first_last_real_perc = mean_std_statistics(samples, data, currencies)
+# original_correlations = calculate_correlations(pd.DataFrame(data[:train_data.shape[0]], columns=currencies))
+# print_(f"{Colors.GREEN}Correlations{Colors.RESET}:")
+# print_(f"{Colors.MAGENTA}Real:{Colors.RESET}:\n{original_correlations}\n")
+# print_(f"{Colors.MAGENTA}Generated{Colors.RESET}:")
+# print_(f"Pearson:\n{pearson_df}\n")
+# print_(f"Spearman:\n{spearman_df}\n")
+# print_(f"Kendall:\n{kendall_df}\n")
 
 
-print(f"Computing historical volatilities...")
-samples_dfs = [pd.DataFrame(sample, columns=currencies) for sample in samples]
-data_train_df = pd.DataFrame(data[:train_data.shape[0]], columns=currencies)
-historical_volatilities_gen = []
-for sample_df in samples_dfs:
-    historical_volatilities_gen.append(calculate_historical_volatility(sample_df, window=sample_df.shape[0]).iloc[-1])
-historical_volatilities_gen_mean = np.mean(np.array(historical_volatilities_gen), axis=0)
-historical_volatilities_gen_std = np.std(np.array(historical_volatilities_gen), axis=0)
-historical_volatilities_gen = pd.DataFrame({'Mean':historical_volatilities_gen_mean, 'Std':historical_volatilities_gen_std}, index=currencies)
-historical_volatilities_real = calculate_historical_volatility(data_train_df, window=train_data.shape[0]).iloc[-1]
-print(f"{Colors.GREEN}Historical volatilities{Colors.RESET}:")
-print(f"{Colors.MAGENTA}Real:{Colors.RESET}\n{historical_volatilities_real}\n")
-print(f"{Colors.MAGENTA}Generated{Colors.RESET}:\n{historical_volatilities_gen}\n")
+# print_(f"Computing historical volatilities...")
+# samples_dfs = [pd.DataFrame(sample, columns=currencies) for sample in samples]
+# data_train_df = pd.DataFrame(data[:train_data.shape[0]], columns=currencies)
+# historical_volatilities_gen = []
+# for sample_df in samples_dfs:
+#     historical_volatilities_gen.append(calculate_historical_volatility(sample_df, window=sample_df.shape[0]).iloc[-1])
+# historical_volatilities_gen_mean = np.mean(np.array(historical_volatilities_gen), axis=0)
+# historical_volatilities_gen_std = np.std(np.array(historical_volatilities_gen), axis=0)
+# historical_volatilities_gen = pd.DataFrame({'Mean':historical_volatilities_gen_mean, 'Std':historical_volatilities_gen_std}, index=currencies)
+# historical_volatilities_real = calculate_historical_volatility(data_train_df, window=train_data.shape[0]).iloc[-1]
+# print_(f"{Colors.GREEN}Historical volatilities{Colors.RESET}:")
+# print_(f"{Colors.MAGENTA}Real:{Colors.RESET}\n{historical_volatilities_real}\n")
+# print_(f"{Colors.MAGENTA}Generated{Colors.RESET}:\n{historical_volatilities_gen}\n")
 
-print(f"{Colors.GREEN}1st and 99th percentiles of the generated and real data{Colors.RESET}:")
-print(f"{Colors.MAGENTA}Real:{Colors.RESET}:\n{first_last_real_perc}\n")
-print(f"{Colors.MAGENTA}Generated{Colors.RESET}:\n{first_last_gen_perc}\n")
+# print_(f"{Colors.GREEN}1st and 99th percentiles of the generated and real data{Colors.RESET}:")
+# print_(f"{Colors.MAGENTA}Real:{Colors.RESET}:\n{first_last_real_perc}\n")
+# print_(f"{Colors.MAGENTA}Generated{Colors.RESET}:\n{first_last_gen_perc}\n")
 
 # # Compute 1-day autocorrelation
-# print("Computing 1-day autocorrelation wrt to K...")
-# print("This will take a while. If you want you can stop the execution")
-# plot_autocorr_wrt_K(
-#     weights, hidden_bias, visible_bias, k_max=1000, n_samples=1000, X_min=X_min_train, X_max=X_max_train, 
-#     indexes_vol_indicators=indexes_vol_indicators_train, vol_indicators=vol_indicators_train)
+print_("Computing 1-day autocorrelation wrt to K...")
+print_("This will take a while. If you want you can stop the execution")
+plot_autocorr_wrt_K(
+    weights, hidden_bias, visible_bias, k_max=1000, n_samples=1000, X_min=X_min_train, X_max=X_max_train, 
+    indexes_vol_indicators=indexes_vol_indicators_train, vol_indicators=vol_indicators_train[:1000])
 
 # Create the animated gifs
-print("Creating animated gifs...")
+print_("Creating animated gifs...")
 try:
     create_animated_gif('output/historgrams', id, output_filename=f'{id}_histograms.gif')
     create_animated_gif('output/weights_receptive_field', id, output_filename=f'{id}_weights_receptive_field.gif')
 except Exception as e:
-    print(f"Error creating animated gifs: {e}")
-print(f"Done\n")
-print(f'Finished id {id}!')
+    print_(f"Error creating animated gifs: {e}")
+print_(f"Done\n")
+print_(f'Finished id {id}!')

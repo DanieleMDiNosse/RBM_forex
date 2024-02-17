@@ -13,6 +13,14 @@ import requests
 from scipy.stats import weibull_min, beta
 from scipy.stats import cauchy
 
+def print_(text):
+    # Open the file in append mode, or 'w' for write mode (which overwrites the file)
+    with open(f'logs/log_{os.getpid()}.txt', 'a') as file:
+        # Print to terminal
+        print(text)
+        # Write the same text to the file
+        file.write(text + '\n')  # Adding '\n' to move to the next line for each call
+
 class Colors:
     RED = '\033[91m'
     GREEN = '\033[92m'
@@ -36,9 +44,10 @@ def create_animated_gif(folder_path, id, output_filename='animated.gif'):
     """
     images = []
     for file_name in natsorted(os.listdir(folder_path)):
-        if file_name.endswith(('.png', '.jpg', '.jpeg', '.gif')) and file_name.startswith(id):
+        if file_name.endswith(('.png', '.jpg', '.jpeg')) and file_name.startswith(id):
             file_path = os.path.join(folder_path, file_name)
             images.append(imageio.imread(file_path))
+            os.remove(os.path.join(folder_path, file_name))
     imageio.mimsave(os.path.join(folder_path, output_filename), images)
 
     return None
@@ -394,7 +403,7 @@ def tail_conc(val1, val2):
 def plot_tail_concentration_functions(real_data, generated_samples, names, id):
     if not os.path.exists("output/tail_concentration"):
         os.makedirs("output/tail_concentration")
-    generated_samples = np.array(generated_samples)
+    dim = np.array(generated_samples).ndim
     
     real_df = pd.DataFrame(real_data, columns=names)
     pairs = itertools.combinations(names, 2)
@@ -404,7 +413,7 @@ def plot_tail_concentration_functions(real_data, generated_samples, names, id):
         # Plot for real data
         plt.plot(tail_conc(real_df[col1], real_df[col2]), label='Real data', color='blue', alpha=0.8)
         
-        if generated_samples.ndim > 2:
+        if dim > 2:
             # Calculate and plot for generated data
             tail_concs = []
             for sample in generated_samples:
@@ -432,31 +441,36 @@ def plot_tail_concentration_functions(real_data, generated_samples, names, id):
 
 def qq_plots(generated_samples, train_data, currencies_names, id):
     """Plot the QQ plots for the generated samples and the training data"""
-    n_features = generated_samples.shape[1]
-    generated_samples = np.array(generated_samples)
-    
+    n_features = train_data.shape[1]
+    dim = np.array(generated_samples).ndim
+
     # Determine the layout based on the number of features
     if n_features > 1:
-        fig, axs = plt.subplots(2, 2, figsize=(11, 5), tight_layout=True)
+        _, axs = plt.subplots(2, 2, figsize=(11, 5), tight_layout=True)
         axs = axs.flatten() # Flatten the axs array for easier indexing
     else:
-        fig, axs = plt.subplots(1, 1, figsize=(11, 5), tight_layout=True)
+        _, axs = plt.subplots(1, 1, figsize=(11, 5), tight_layout=True)
         axs = [axs] # Wrap the single axs object in a list for consistent access
 
-    if generated_samples.ndim > 2:
-        gen_quantiles = np.zeros((len(generated_samples), 100))
-        for i, sample in enumerate(generated_samples):
-            gen_quantiles[i] = np.quantile(sample[:, i], q=np.arange(0, 1, 0.01))
-            gen_quantiles_means = np.mean(gen_quantiles, axis=0)
-            gen_quantiles_stds = np.std(gen_quantiles, axis=0)
+    if dim > 2:
+        gen_quantiles_means = np.zeros((n_features, 100)) # (4,100)
+        gen_quantiles_stds = np.zeros((n_features, 100))
+        gen_quantiles = np.zeros((len(generated_samples), n_features, 100))
+        for i in range(n_features):
+            for j, sample in enumerate(generated_samples):
+                gen_quantiles[j, i] = np.quantile(sample[:, i], q=np.arange(0, 1, 0.01))
+            gen_quantiles_means[i] = np.mean(gen_quantiles[:, i, :], axis=0)
+            gen_quantiles_stds[i] = np.std(gen_quantiles[:, i, :], axis=0)
     else:
         gen_quantiles = np.quantile(generated_samples, q=np.arange(0, 1, 0.01))
-        gen_quantiles_means, gen_quantiles_stds = gen_quantiles, None
 
-    for i, title in zip(range(train_data.shape[1]), currencies_names):
+    for i, title in zip(range(n_features), currencies_names):
         train_quantiles = (np.quantile(train_data[:, i], q=np.arange(0, 1, 0.01)))
         ax = axs[i]
-        ax.errorbar(gen_quantiles_means, train_quantiles, xerr=None, yerr=gen_quantiles_stds, fmt='o', alpha=0.8, markersize=5)
+        if dim > 2: 
+            ax.errorbar(gen_quantiles_means[i], train_quantiles, xerr=None, yerr=2*gen_quantiles_stds[i], fmt='o', alpha=0.8, markersize=3.5)
+        else:
+            ax.plot(gen_quantiles, train_quantiles, 'o', alpha=0.8, markersize=3.5)
         ax.plot([0, 1], [0, 1], transform=ax.transAxes, ls="--", c=".3")
         ax.set_xlabel("Generated samples quantiles")
         ax.set_ylabel("Training data quantiles")
@@ -641,8 +655,8 @@ def monitoring_plots(weights, hidden_bias, visible_bias, deltas, pos_hidden_prob
     axes[0,2].set_title("Visible bias")
     axes[1,2].bar(x_v, delta_visible_bias, color='k', alpha=0.5)
     axes[1,2].set_title(r"$\Delta v$")
-    plt.savefig(f"output/historgrams/{id}_histograms_{epoch}.png")
     fig.suptitle(f"Epoch {epoch}")
+    plt.savefig(f"output/historgrams/{id}_histograms_{epoch}.png")
     plt.close()
 
 
@@ -660,10 +674,10 @@ def plot_autocorr_wrt_K(weights, hidden_bias, visible_bias, k_max, n_samples, X_
             if i % 100 == 0 and i != 0: print(f"\t Genereting sample #{i}")
 
             # Create the state at time 0
-            samples_0 = parallel_sample(weights, hidden_bias, visible_bias, k, indexes_vol_indicators, vol_indicators, n_samples, n_processors=8)
+            samples_0 = parallel_sample(weights, hidden_bias, visible_bias, k, indexes_vol_indicators, vol_indicators, n_samples)
             samples_00 = np.delete(samples_0, indexes_vol_indicators, axis=1)
             # Use the state at time zero to initialise a new gibbs sampling
-            samples_1 = sample_from_state(samples_0, weights, hidden_bias, visible_bias, k)
+            samples_1 = sample_from_state(samples_0, weights, hidden_bias, visible_bias, indexes_vol_indicators, vol_indicators, k)
             samples_11 = np.delete(samples_1, indexes_vol_indicators, axis=1)
             
             # Convert back to real numbers
