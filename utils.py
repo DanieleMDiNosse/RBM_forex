@@ -668,7 +668,7 @@ def plot_autocorr_wrt_K(weights, hidden_bias, visible_bias, k_max, n_samples, X_
     # Set the number of autocorrelations to compute for each k
     N = 1000
     for k in range(1, k_max+100, 100):
-        print(f"K = {k}/{k_max}")
+        print_(f"K = {k}/{k_max}")
         autocorr = 0
         for i in range(N):
             if i % 100 == 0 and i != 0: print(f"\t Genereting sample #{i}")
