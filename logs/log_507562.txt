@@ -1,0 +1,29 @@
+Loading data...
+C507562_0.001_4 - TRAINING RBM ON CURRENCY DATA
+
+Pre processing data...
+Done
+
+Original data entries type:
+	float64
+Data binary entries type:
+	int64
+Training data binary shape:
+	(2590, 68)
+Validation data binary shape:
+	(280, 68)
+
+Loading weights, reconstruction error and free energies quantites...
+Done
+
+Sampling from the RBM for 2 times...
+Drawing 1...
+Drawing 2...
+Done
+
+Converting the samples from binary to real values...
+Done
+
+Plotting results...
+Computing 1-day autocorrelation wrt to K...
+This will take a while. If you want you can stop the execution
