@@ -1,14 +1,10 @@
 import numpy as np
-import yfinance as yf
-import matplotlib.pyplot as plt
-# plt.style.use('seaborn')
 from sklearn.model_selection import train_test_split
 import pandas as pd
 from rbm import *
 from utils import *
 import time
 import logging
-from scipy import stats
 import argparse
 import os
 
@@ -19,7 +15,8 @@ parser.add_argument("-l", "--log", default="info",
                         help=("Provide logging level. Example --log debug', default='info'"))
 parser.add_argument("--train_rbm", "-t", action="store_true", help="Train the RBM")
 parser.add_argument("--dataset", "-d", type=str, default="normal", help="Dataset to use. Options: normal, bi_normal, poisson, AR3, mixed")
-parser.add_argument("--num_features", "-f", type=int, default=1, help="Number of features. Default: 1")
+parser.add_argument("--num_features", "-f", type=int, default=1, help="Number of features. Uselees if you chose mixed dataset. Default: 1")
+parser.add_argument("--hidden_units", "-h", type=int, default=12, help="Number of hidden units. Default: 12")
 parser.add_argument("--epochs", "-e", type=int, default=1500, help="Number of epochs. Default: 1500")
 parser.add_argument("--learning_rate", "-lr", type=float, default=0.01, help="Learning rate, Default: 0.01")
 parser.add_argument("--batch_size", "-b", type=int, default=10, help="Batch size for training. Default: 10")
@@ -30,7 +27,10 @@ levels = {'critical': logging.CRITICAL,
               'info': logging.INFO,
               'debug': logging.DEBUG}
 args = parser.parse_args()
+
+# Track the process id
 id = f'S{os.getpid()}'
+
 #Check if the output folder exists
 if not os.path.exists("logs"):
     os.makedirs("logs")
@@ -76,7 +76,7 @@ print(f"Validation data shape:\n\t{val.shape}\n")
 if args.train_rbm:
     # Define the RBM
     num_visible = train_data.shape[1]
-    num_hidden = 12
+    num_hidden = args.hidden_units
     print(f"Number of visible units:\n\t{num_visible}")
     print(f"Number of hidden units:\n\t{num_hidden}")
     weights, hidden_bias, visible_bias = initialize_rbm(train_data, num_visible, num_hidden)
@@ -105,7 +105,7 @@ plot_objectives(reconstruction_error, f_energy, wasserstein_dist, id)
 
 # Sample from the RBM
 print("Sampling from the RBM...")
-samples = sample(train_data.shape[1], weights, hidden_bias, visible_bias, k=1000, n_samples=train_data.shape[0])
+samples = parallel_sample(train_data.shape[1], weights, hidden_bias, visible_bias, k=1000, n_samples=train_data.shape[0])
 print(f"Done\n")
 
 # Convert to real values
