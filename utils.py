@@ -167,9 +167,8 @@ def mixed_dataset(n_samples):
     samples2 = np.random.normal(mean2, np.sqrt(var2), n_samples // 2)
     column1 = np.concatenate([samples1, samples2])
 
-    # Column 2: Cauchy distribution
-    location, scale = 0.5, 3  # Mean and variance
-    column2 = cauchy.rvs(loc=location, scale=scale, size=n_samples)
+    # Column 2: Uniform distribution mixed with a normal distribution
+    column2 = np.concatenate([np.random.normal(0, 1, n_samples // 2), np.random.uniform(-10, 10, n_samples // 2)])
 
     # Column 3: Weibull distribution
     shape, scale = 1, 1.5
@@ -377,6 +376,32 @@ def plot_distributions(generated_samples, train_data, currencies_names, id):
     plt.close()
 
 def tail_conc(val1, val2):
+    """
+    Calculate the tail concentration of two arrays.
+    This function calculates the tail concentration of two arrays, `val1` and `val2`.
+    It computes the fraction of values in `val1` and `val2` that fall below or above
+    certain quantiles, and returns a list of these fractions. In other words, tail 
+    concentration is a measure of the degree to which extreme values in one variable
+    are associated with extreme values in another variable.
+
+    Parameters:
+    ----------
+    val1: list or array-like
+        The first array of values.
+    val2: list or array-like
+        The second array of values.
+    
+    Returns:
+    -------
+    f: list
+        The list of tail concentration values.
+
+    Example:
+    >>> val1 = [1, 2, 3, 4, 5]
+    >>> val2 = [6, 7, 8, 9, 10]
+    >>> tail_conc(val1, val2)
+    [0.2, 0.4, 0.6, 0.8, 1.0, 0.8, 0.6, 0.4, 0.2]
+    """
     f = []
     n = len(val1)
     linspace = np.arange(0.01, 0.5, 0.01)
@@ -453,7 +478,7 @@ def qq_plots(generated_samples, train_data, currencies_names, id):
         axs = [axs] # Wrap the single axs object in a list for consistent access
 
     if dim > 2:
-        gen_quantiles_means = np.zeros((n_features, 100)) # (4,100)
+        gen_quantiles_means = np.zeros((n_features, 100))
         gen_quantiles_stds = np.zeros((n_features, 100))
         gen_quantiles = np.zeros((len(generated_samples), n_features, 100))
         for i in range(n_features):
@@ -462,7 +487,9 @@ def qq_plots(generated_samples, train_data, currencies_names, id):
             gen_quantiles_means[i] = np.mean(gen_quantiles[:, i, :], axis=0)
             gen_quantiles_stds[i] = np.std(gen_quantiles[:, i, :], axis=0)
     else:
-        gen_quantiles = np.quantile(generated_samples, q=np.arange(0, 1, 0.01))
+        gen_quantiles = np.zeros((n_features, 100))
+        for i in range(n_features):
+            gen_quantiles[i] = np.quantile(generated_samples[:, i], q=np.arange(0, 1, 0.01))
 
     for i, title in zip(range(n_features), currencies_names):
         train_quantiles = (np.quantile(train_data[:, i], q=np.arange(0, 1, 0.01)))
@@ -470,8 +497,8 @@ def qq_plots(generated_samples, train_data, currencies_names, id):
         if dim > 2: 
             ax.errorbar(gen_quantiles_means[i], train_quantiles, xerr=None, yerr=2*gen_quantiles_stds[i], fmt='o', alpha=0.8, markersize=3.5)
         else:
-            ax.plot(gen_quantiles, train_quantiles, 'o', alpha=0.8, markersize=3.5)
-        ax.plot([0, 1], [0, 1], transform=ax.transAxes, ls="--", c=".3")
+            ax.plot(gen_quantiles[i], train_quantiles, 'o', alpha=0.8, markersize=3.5)
+        ax.plot([gen_quantiles_means[i][0], gen_quantiles_means[i][-1]], [gen_quantiles_means[i][0], gen_quantiles_means[i][-1]], ls="--", c=".3")
         ax.set_xlabel("Generated samples quantiles")
         ax.set_ylabel("Training data quantiles")
         ax.set_title(f"{title}")
@@ -708,6 +735,10 @@ def calculate_historical_volatility(df, window=90):
     df: DataFrame with columns representing different currency pairs and rows as daily returns.
     window: Integer representing the rolling window size for volatility calculation.
     """
+    # Check if df is a dataframe. If not, convert it to a dataframe
+    if not isinstance(df, pd.DataFrame):
+        df = pd.DataFrame(df)
+
     return df.rolling(window=window).std() * np.sqrt(252)  # Annualizing volatility
 
 def compute_binary_volatility_indicator(df, window=90):
