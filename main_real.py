@@ -160,7 +160,7 @@ else:
 # Plot the objectives
 # plot_objectives(reconstruction_error, f_energy_overfitting, f_energy_diff, diff_fenergy, id)
 
-num_drawing = 2
+num_drawing = 100
 samples = np.zeros((num_drawing, train_data.shape[0], train_data.shape[1]))
 print_(f"Sampling from the RBM for {num_drawing} times...")
 for i in range(num_drawing):
@@ -168,18 +168,28 @@ for i in range(num_drawing):
     samples[i] = parallel_sample(weights, hidden_bias, visible_bias, 1000, indexes_vol_indicators_train, vol_indicators_train, train_data.shape[0], n_processors=8)
 print_(f"Done\n")
 
-# print_(f"Saving the samples")
-# np.save(f"output/samples_{start_date}_{end_date}_{args.epochs}_{args.learning_rate}.npy", samples)
-# print_(f"Done\n")
+# Collect indexes of low and high volatility regimes. These will be used to compute the historical volatilities
+print_(f"Collecting indexes of low and high volatility regimes...")
+samples_dfs = [pd.DataFrame(sample) for sample in samples]
+condition_low_vol = [sample.iloc[:, indexes_vol_indicators_train] == 0 for sample in samples_dfs]
+condition_high_vol = [sample.iloc[:, indexes_vol_indicators_train] == 1 for sample in samples_dfs]
+indexes_low_vol = [np.unique(np.where(condition)) for condition in condition_low_vol]
+indexes_high_vol = [np.unique(np.where(condition)) for condition in condition_high_vol]
+print_(f"Done\n")
 
-# # Remove the volatility indicators
-# print_("Removing the volatility indicators from the samples...")
-# samples_no_vol_indicators = np.zeros((num_drawing, train_data.shape[0], train_data.shape[1]-len(indexes_vol_indicators_train)))
-# for i in range(len(samples)):
-#     s = np.delete(samples[i], indexes_vol_indicators_train, axis=1)
-#     samples_no_vol_indicators[i] = s
-# samples = samples_no_vol_indicators
-# print_(f"Done\n")
+
+print_(f"Saving the samples")
+np.save(f"output/samples_{start_date}_{end_date}_{args.epochs}_{args.learning_rate}.npy", samples)
+print_(f"Done\n")
+
+# Remove the volatility indicators
+print_("Removing the volatility indicators from the samples...")
+samples_no_vol_indicators = np.zeros((num_drawing, train_data.shape[0], train_data.shape[1]-len(indexes_vol_indicators_train)))
+for i in range(len(samples)):
+    s = np.delete(samples[i], indexes_vol_indicators_train, axis=1)
+    samples_no_vol_indicators[i] = s
+samples = samples_no_vol_indicators
+print_(f"Done\n")
 
 # Convert to real values
 print_("Converting the samples from binary to real values...")
@@ -196,54 +206,71 @@ print_(f"Done\n")
 print_("Plotting results...")
 data = data[:train_data.shape[0]].reshape(samples[0].shape)
 # Plot the samples and the recontructed error
-# plot_distributions(samples[np.random.randint(0, len(samples))], data, currencies, id)
+plot_distributions(samples[np.random.randint(0, len(samples))], data, currencies, id)
 
-# # Generate QQ plot data
-# qq_plots(samples, data, currencies, id)
+# Generate QQ plot data
+qq_plots(samples, data, currencies, id)
 
-# # Plot the concentration functions
-# plot_tail_concentration_functions(data, samples, currencies, id)
+# Plot the concentration functions
+plot_tail_concentration_functions(data, samples, currencies, id)
 
-# # # Plot upper and lower tail distribution functions
-# # plot_tail_distributions(samples, data, currencies, id)
+# # Plot upper and lower tail distribution functions
+# plot_tail_distributions(samples, data, currencies, id)
 
-# #Plot PCA with 2 components
-# plot_pca_with_marginals(samples[np.random.randint(0, len(samples))], data, id)
-# print_(f"Done\n")
+#Plot PCA with 2 components
+plot_pca_with_marginals(samples[np.random.randint(0, len(samples))], data, id)
+print_(f"Done\n")
 
-# # Correlations
-# print_(f"Computing means and standard deviations of the correlations, historical volatilties and 1st and 99th percentiles...")
-# pearson_df, spearman_df, kendall_df, first_last_gen_perc, first_last_real_perc = mean_std_statistics(samples, data, currencies)
-# original_correlations = calculate_correlations(pd.DataFrame(data[:train_data.shape[0]], columns=currencies))
-# print_(f"{Colors.GREEN}Correlations{Colors.RESET}:")
-# print_(f"{Colors.MAGENTA}Real:{Colors.RESET}:\n{original_correlations}\n")
-# print_(f"{Colors.MAGENTA}Generated{Colors.RESET}:")
-# print_(f"Pearson:\n{pearson_df}\n")
-# print_(f"Spearman:\n{spearman_df}\n")
-# print_(f"Kendall:\n{kendall_df}\n")
+# Correlations
+print_(f"Computing means and standard deviations of the correlations, historical volatilties and 1st and 99th percentiles...")
+pearson_df, spearman_df, kendall_df, first_last_gen_perc, first_last_real_perc = mean_std_statistics(samples, data, currencies)
+original_correlations = calculate_correlations(pd.DataFrame(data[:train_data.shape[0]], columns=currencies))
+print_(f"{Colors.GREEN}Correlations{Colors.RESET}:")
+print_(f"{Colors.MAGENTA}Real:{Colors.RESET}:\n{original_correlations}\n")
+print_(f"{Colors.MAGENTA}Generated{Colors.RESET}:")
+print_(f"Pearson:\n{pearson_df}\n")
+print_(f"Spearman:\n{spearman_df}\n")
+print_(f"Kendall:\n{kendall_df}\n")
 
 
-# print_(f"Computing historical volatilities...")
-# samples_dfs = [pd.DataFrame(sample, columns=currencies) for sample in samples]
-# data_train_df = pd.DataFrame(data[:train_data.shape[0]], columns=currencies)
-# historical_volatilities_gen = []
-# for sample_df in samples_dfs:
-#     historical_volatilities_gen.append(calculate_historical_volatility(sample_df, window=sample_df.shape[0]).iloc[-1])
-# historical_volatilities_gen_mean = np.mean(np.array(historical_volatilities_gen), axis=0)
-# historical_volatilities_gen_std = np.std(np.array(historical_volatilities_gen), axis=0)
-# historical_volatilities_gen = pd.DataFrame({'Mean':historical_volatilities_gen_mean, 'Std':historical_volatilities_gen_std}, index=currencies)
-# historical_volatilities_real = calculate_historical_volatility(data_train_df, window=train_data.shape[0]).iloc[-1]
-# print_(f"{Colors.GREEN}Historical volatilities{Colors.RESET}:")
-# print_(f"{Colors.MAGENTA}Real:{Colors.RESET}\n{historical_volatilities_real}\n")
-# print_(f"{Colors.MAGENTA}Generated{Colors.RESET}:\n{historical_volatilities_gen}\n")
+print_(f"Computing historical volatilities...")
+data_train_df = pd.DataFrame(data[:train_data.shape[0]], columns=currencies)
+samples_dfs = [pd.DataFrame(sample, columns=currencies) for sample in samples]
+data_train_low_vol = data[np.where(vol_indicators_train == 0)[0]]
+data_train_high_vol = data[np.where(vol_indicators_train == 1)[0]]
 
-# print_(f"{Colors.GREEN}1st and 99th percentiles of the generated and real data{Colors.RESET}:")
-# print_(f"{Colors.MAGENTA}Real:{Colors.RESET}:\n{first_last_real_perc}\n")
-# print_(f"{Colors.MAGENTA}Generated{Colors.RESET}:\n{first_last_gen_perc}\n")
+historical_volatilities_gen_low = []
+historical_volatilities_gen_high = []
+for sample_df, idx_low, idx_high in zip(samples_dfs, indexes_low_vol, indexes_high_vol):
+    df_low = sample_df.iloc[idx_low]
+    df_high = sample_df.iloc[idx_high]
+    historical_volatilities_gen_low.append(calculate_historical_volatility(df_low, window=df_low.shape[0]).iloc[-1])
+    historical_volatilities_gen_high.append(calculate_historical_volatility(df_high, window=df_high.shape[0]).iloc[-1])
 
-# # Compute 1-day autocorrelation
-print_("Computing 1-day autocorrelation wrt to K...")
-print_("This will take a while. If you want you can stop the execution")
+historical_volatilities_gen_low_mean = np.mean(np.array(historical_volatilities_gen_low), axis=0)
+historical_volatilities_gen_low_std = np.std(np.array(historical_volatilities_gen_low), axis=0)
+historical_volatilities_gen_high_mean = np.mean(np.array(historical_volatilities_gen_high), axis=0)
+historical_volatilities_gen_high_std = np.std(np.array(historical_volatilities_gen_high), axis=0)
+
+historical_volatilities_gen_low = pd.DataFrame({'Mean':historical_volatilities_gen_low_mean, 'Std':historical_volatilities_gen_low_std}, index=currencies)
+historical_volatilities_gen_high = pd.DataFrame({'Mean':historical_volatilities_gen_high_mean, 'Std':historical_volatilities_gen_high_std}, index=currencies)
+
+historical_volatilities_real_low = calculate_historical_volatility(data_train_low_vol, window=train_data.shape[0]).iloc[-1]
+historical_volatilities_real_high = calculate_historical_volatility(data_train_high_vol, window=train_data.shape[0]).iloc[-1]
+
+print_(f"{Colors.GREEN}Historical volatilities{Colors.RESET}:")
+print_(f"{Colors.MAGENTA}Real (low vol regime):{Colors.RESET}\n{historical_volatilities_real_low}\n")
+print_(f"{Colors.MAGENTA}Generated (low vol regime){Colors.RESET}:\n{historical_volatilities_gen_low}\n")
+print_(f"{Colors.MAGENTA}Real (high vol regime) :{Colors.RESET}\n{historical_volatilities_real_high}\n")
+print_(f"{Colors.MAGENTA}Generated (high vol regime) {Colors.RESET}:\n{historical_volatilities_gen_high}\n")
+
+print_(f"{Colors.GREEN}1st and 99th percentiles of the generated and real data{Colors.RESET}:")
+print_(f"{Colors.MAGENTA}Real:{Colors.RESET}:\n{first_last_real_perc}\n")
+print_(f"{Colors.MAGENTA}Generated{Colors.RESET}:\n{first_last_gen_perc}\n")
+
+# Compute 1-day autocorrelation
+choice = input("Do you want to compute the 1-day autocorrelation wrt to K? (y/n): ")
+print_("With the current implementation, this will take a really long time (1 day on my machine). If you want you can stop the execution or maybe optimize the code!.")
 plot_autocorr_wrt_K(
     weights, hidden_bias, visible_bias, k_max=1000, n_samples=1000, X_min=X_min_train, X_max=X_max_train, 
     indexes_vol_indicators=indexes_vol_indicators_train, vol_indicators=vol_indicators_train[:1000])
@@ -254,6 +281,6 @@ try:
     create_animated_gif('output/historgrams', id, output_filename=f'{id}_histograms.gif')
     create_animated_gif('output/weights_receptive_field', id, output_filename=f'{id}_weights_receptive_field.gif')
 except Exception as e:
-    print_(f"Error creating animated gifs: {e}")
+    print_(f"Error creating animated gifs (probably no files): {e}")
 print_(f"Done\n")
 print_(f'Finished id {id}!')
