@@ -174,3 +174,12 @@ output/
 
 # numpy files
 *.npy
+
+# txt files
+*.txt
+
+# csv files
+*.csv
+
+# log files
+*.log
