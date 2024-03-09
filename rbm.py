@@ -149,16 +149,27 @@ def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size,
     for epoch in range(num_epochs):
         if epoch % 100 == 0: print(f"Epoch: {epoch}/{num_epochs}")
         for i in range(0, num_samples, batch_size):
+            # Initialize persisten chain
+            h_persistent = np.random.randint(0, 2, size=(batch_size, hidden_bias.shape[0]))
+
+            # Initiliaze the visible units with the training vectors
             v0 = data[i:i+batch_size]
 
             # Positive phase
             pos_hidden_prob, pos_hidden_states = sample_hidden(v0, weights, hidden_bias)
+
+            # Copy the probabilities to use them in the positive associations
             pos_hidden_prob0 = pos_hidden_prob.copy()
-            # neg_visible_states = v0.astype(np.int64)
+
             # Gibbs sampling
             for _ in range(k):
-                neg_visible_prob, neg_visible_states = sample_visible(pos_hidden_states, weights, visible_bias)
+                if _ == 0:
+                    neg_visible_prob, neg_visible_states = sample_visible(h_persistent, weights, visible_bias)
                 pos_hidden_prob , pos_hidden_states = sample_hidden(neg_visible_states, weights, hidden_bias)
+                neg_visible_prob, neg_visible_states = sample_visible(pos_hidden_states, weights, visible_bias)
+            
+            # Update the persistent chain
+            h_persistent = pos_hidden_states
 
             # Update weights and biases
             """In the positive statistics collection, using pos_hidden_states is closer to the mathematical 
@@ -167,32 +178,23 @@ def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size,
             positive_associations = dot_product(pos_hidden_prob0.T, v0)
             negative_associations = dot_product(pos_hidden_prob.T, neg_visible_states)
 
-            lr = learning_rate / batch_size
+            # update the learning rate according to initial_step_size * (1.0 - (1.0*self.global_step)/(1.0*iterations*epochs))
+            # learning_rate = learning_rate * (1.0 - (epoch*i)/(num_epochs*num_samples//batch_size))
+            # lr = learning_rate / batch_size
 
             penalty = np.sum(weights.ravel()) * 0.001
 
-            delta_w = lr * ((positive_associations - negative_associations) - penalty)
-            delta_hidden_bias = lr * mean_axis_0(pos_hidden_prob0 - pos_hidden_prob)
-            delta_visible_bias = lr * mean_axis_0(v0 - neg_visible_states)
+            delta_w = learning_rate * ((positive_associations - negative_associations) - penalty)
+            delta_hidden_bias = learning_rate * mean_axis_0(pos_hidden_prob0 - pos_hidden_prob)
+            delta_visible_bias = learning_rate * mean_axis_0(v0 - neg_visible_states)
 
-            # Apply momentum
-            if epoch < 1000:
-                momentum = 0.5
-            else:
-                momentum = 0.9
-
-            velocity_w = momentum * velocity_w + delta_w.T
-            velocity_hidden_bias = momentum * velocity_hidden_bias + delta_hidden_bias
-            velocity_visible_bias = momentum * velocity_visible_bias + delta_visible_bias
-
-            deltas = [velocity_w, velocity_hidden_bias, velocity_visible_bias]
+            deltas = [delta_w, delta_hidden_bias, delta_visible_bias]
 
             # Update weights and biases with velocity
-            weights += velocity_w
-            hidden_bias += velocity_hidden_bias
-            visible_bias += velocity_visible_bias
+            weights += delta_w.T
+            hidden_bias += delta_hidden_bias
+            visible_bias += delta_visible_bias
 
-        if epoch % 100 == 0: print(f"Epoch: {epoch}/{num_epochs}")
         if monitoring:
             if epoch % 100 == 0 and epoch != 0:
                 monitoring_plots(weights, hidden_bias, visible_bias, deltas, pos_hidden_prob, epoch, id)

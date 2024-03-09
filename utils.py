@@ -496,9 +496,10 @@ def qq_plots(generated_samples, train_data, currencies_names, id):
         ax = axs[i]
         if dim > 2: 
             ax.errorbar(gen_quantiles_means[i], train_quantiles, xerr=None, yerr=2*gen_quantiles_stds[i], fmt='o', alpha=0.8, markersize=3.5)
+            ax.plot([gen_quantiles_means[i][0], gen_quantiles_means[i][-1]], [gen_quantiles_means[i][0], gen_quantiles_means[i][-1]], ls="--", c=".3")
         else:
             ax.plot(gen_quantiles[i], train_quantiles, 'o', alpha=0.8, markersize=3.5)
-        ax.plot([gen_quantiles_means[i][0], gen_quantiles_means[i][-1]], [gen_quantiles_means[i][0], gen_quantiles_means[i][-1]], ls="--", c=".3")
+            ax.plot([gen_quantiles[i][0], gen_quantiles[i][-1]], [gen_quantiles[i][0], gen_quantiles[i][-1]], ls="--", c=".3")
         ax.set_xlabel("Generated samples quantiles")
         ax.set_ylabel("Training data quantiles")
         ax.set_title(f"{title}")
