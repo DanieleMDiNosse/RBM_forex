@@ -9,7 +9,7 @@ def visibile_bias_init(data_binary):
     visible_bias_t0 = np.log(frequencies / (1 - frequencies))
     return visible_bias_t0
 
-def initialize_rbm(data, num_visible, num_hidden):
+def initialize_rbm(data, num_visible, num_hidden, batch_size):
     '''Initialize the weights and biases of the RBM. The weights and the hidden bias are 
     initialized with a normal distribution with mean 0 and standard deviation 0.01. 
     The visible bias is initialized with the log of the ratio of the empirical frequencies 
@@ -37,8 +37,9 @@ def initialize_rbm(data, num_visible, num_hidden):
     # hidden_bias = -np.ones(num_hidden) * 4
     hidden_bias = np.random.normal(0, 0.01, num_hidden)
     visible_bias = visibile_bias_init(data)
+    h_persistent = np.random.binomial(n=1, p=0.5, size=[batch_size, hidden_bias.shape[0]])
     
-    return weights, hidden_bias, visible_bias
+    return weights, hidden_bias, visible_bias, h_persistent
 
 @njit
 def sample_hidden(visible, weights, hidden_bias):
@@ -81,7 +82,7 @@ def sample_visible(hidden, weights, visible_bias):
     return visible_probabilities, visible_states
 
 # @njit
-def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size, learning_rate, k, monitoring, id, additional_quantities):
+def train(data, val, weights, hidden_bias, visible_bias, h_persistent, num_epochs, batch_size, learning_rate, k, monitoring, id, additional_quantities):
     '''Train the RBM using the contrastive divergence algorithm.
     
     Parameters
@@ -149,9 +150,6 @@ def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size,
     for epoch in range(num_epochs):
         if epoch % 100 == 0: print(f"Epoch: {epoch}/{num_epochs}")
         for i in range(0, num_samples, batch_size):
-            # Initialize persisten chain
-            h_persistent = np.random.randint(0, 2, size=(batch_size, hidden_bias.shape[0]))
-
             # Initiliaze the visible units with the training vectors
             v0 = data[i:i+batch_size]
 
@@ -180,13 +178,13 @@ def train(data, val, weights, hidden_bias, visible_bias, num_epochs, batch_size,
 
             # update the learning rate according to initial_step_size * (1.0 - (1.0*self.global_step)/(1.0*iterations*epochs))
             # learning_rate = learning_rate * (1.0 - (epoch*i)/(num_epochs*num_samples//batch_size))
-            # lr = learning_rate / batch_size
+            lr = learning_rate / batch_size
 
             penalty = np.sum(weights.ravel()) * 0.001
 
-            delta_w = learning_rate * ((positive_associations - negative_associations) - penalty)
-            delta_hidden_bias = learning_rate * mean_axis_0(pos_hidden_prob0 - pos_hidden_prob)
-            delta_visible_bias = learning_rate * mean_axis_0(v0 - neg_visible_states)
+            delta_w = lr * ((positive_associations - negative_associations) - penalty)
+            delta_hidden_bias = lr * mean_axis_0(pos_hidden_prob0 - pos_hidden_prob)
+            delta_visible_bias = lr * mean_axis_0(v0 - neg_visible_states)
 
             deltas = [delta_w, delta_hidden_bias, delta_visible_bias]
 

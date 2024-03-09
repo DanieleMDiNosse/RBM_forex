@@ -116,7 +116,7 @@ if args.train_rbm:
         hidden_bias = np.load(f"output/hidden_bias_{input}.npy")
         visible_bias = np.load(f"output/visible_bias_{input}.npy")
     else:
-        weights, hidden_bias, visible_bias = initialize_rbm(train_data, num_visible, num_hidden)
+        weights, hidden_bias, visible_bias, h_persistent = initialize_rbm(train_data, num_visible, num_hidden, args.batch_size)
 
     print_(f"Initial weights shape:\n\t{weights.shape}")
     print_(f"Initial hidden bias:\n\t{hidden_bias}")
@@ -127,7 +127,7 @@ if args.train_rbm:
     additional_quantities = [X_min_train, X_max_train, indexes_vol_indicators_train, vol_indicators_train, currencies]
 
     reconstruction_error, f_energy_overfitting, f_energy_diff, diff_fenergy, weights, hidden_bias, visible_bias = train(
-        train_data, val_binary, weights, hidden_bias, visible_bias, num_epochs=args.epochs, batch_size=args.batch_size, 
+        train_data, val_binary, weights, hidden_bias, visible_bias, h_persistent, num_epochs=args.epochs, batch_size=args.batch_size, 
         learning_rate=args.learning_rate, k=args.k_step, monitoring=True, id=id, additional_quantities=additional_quantities)
     print_(f"Done\n")
 
@@ -270,10 +270,11 @@ print_(f"{Colors.MAGENTA}Generated{Colors.RESET}:\n{first_last_gen_perc}\n")
 
 # Compute 1-day autocorrelation
 choice = input("Do you want to compute the 1-day autocorrelation wrt to K? (y/n): ")
-print_("With the current implementation, this will take a really long time (1 day on my machine). If you want you can stop the execution or maybe optimize the code!.")
-plot_autocorr_wrt_K(
-    weights, hidden_bias, visible_bias, k_max=1000, n_samples=1000, X_min=X_min_train, X_max=X_max_train, 
-    indexes_vol_indicators=indexes_vol_indicators_train, vol_indicators=vol_indicators_train[:1000])
+if choice == 'y':
+    print_("With the current implementation, this will take a really long time (1 day on my machine). If you want you can stop the execution or maybe optimize the code!.")
+    plot_autocorr_wrt_K(
+        weights, hidden_bias, visible_bias, k_max=1000, n_samples=1000, X_min=X_min_train, X_max=X_max_train, 
+        indexes_vol_indicators=indexes_vol_indicators_train, vol_indicators=vol_indicators_train[:1000])
 
 # Create the animated gifs
 print_("Creating animated gifs...")
