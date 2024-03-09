@@ -270,10 +270,11 @@ print_(f"{Colors.MAGENTA}Generated{Colors.RESET}:\n{first_last_gen_perc}\n")
 
 # Compute 1-day autocorrelation
 choice = input("Do you want to compute the 1-day autocorrelation wrt to K? (y/n): ")
-print_("With the current implementation, this will take a really long time (1 day on my machine). If you want you can stop the execution or maybe optimize the code!.")
-plot_autocorr_wrt_K(
-    weights, hidden_bias, visible_bias, k_max=1000, n_samples=1000, X_min=X_min_train, X_max=X_max_train, 
-    indexes_vol_indicators=indexes_vol_indicators_train, vol_indicators=vol_indicators_train[:1000])
+if choice == 'y':
+    print_("With the current implementation, this will take a really long time (1 day on my machine). If you want you can stop the execution or maybe optimize the code!.")
+    plot_autocorr_wrt_K(
+        weights, hidden_bias, visible_bias, k_max=1000, n_samples=1000, X_min=X_min_train, X_max=X_max_train, 
+        indexes_vol_indicators=indexes_vol_indicators_train, vol_indicators=vol_indicators_train[:1000])
 
 # Create the animated gifs
 print_("Creating animated gifs...")
