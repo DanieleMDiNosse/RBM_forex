@@ -14,7 +14,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("-l", "--log", default="info",
                         help=("Provide logging level. Example --log debug', default='info'"))
 parser.add_argument("--train_rbm", "-t", action="store_true", help="Train the RBM. Default: False")
-parser.add_argument("--hidden_units", "-hu", type=int, help="Train the RBM. Default: 30")
+parser.add_argument("--hidden_units", "-hu", type=int, default=30, help="Train the RBM. Default: 30")
 parser.add_argument("--epochs", "-e", type=int, default=1500, help="Number of epochs. Default: 1500")
 parser.add_argument("--learning_rate", "-lr", type=float, default=0.01, help="Learning rate. Default: 0.01")
 parser.add_argument("--batch_size", "-b", type=int, default=10, help="Batch size for training. Default: 10")
